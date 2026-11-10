@@ -119,7 +119,50 @@ abstract class RouteDao {
 }
 
 @Dao
-interface RideDao {
+abstract class RideDao {
     @Query("SELECT COUNT(*) FROM rides WHERE routeId = :routeId")
-    suspend fun countForRoute(routeId: String): Int
+    abstract suspend fun countForRoute(routeId: String): Int
+
+    @Insert
+    abstract suspend fun insert(ride: RideEntity)
+
+    @Query("SELECT * FROM rides WHERE id = :id")
+    abstract suspend fun get(id: String): RideEntity?
+
+    /** The ride to resume when the app opens (spec §6); there is at most one. */
+    @Query("SELECT * FROM rides WHERE status = 'IN_PROGRESS' ORDER BY startedAt DESC LIMIT 1")
+    abstract suspend fun inProgress(): RideEntity?
+
+    @Query("UPDATE rides SET segmentCount = segmentCount + 1 WHERE id = :id")
+    abstract suspend fun addSegment(id: String)
+
+    /** Ends the ride and, when its route still exists, stamps the route as ridden. */
+    @Transaction
+    open suspend fun end(
+        id: String,
+        status: RideStatus,
+        endedAt: Long,
+        direction: Direction,
+        distanceM: Double,
+        movingTimeS: Long,
+    ) {
+        endRide(id, status, endedAt, direction, distanceM, movingTimeS)
+        get(id)?.routeId?.let { markRidden(it, endedAt) }
+    }
+
+    @Query(
+        """UPDATE rides SET status = :status, endedAt = :endedAt, direction = :direction,
+               distanceM = :distanceM, movingTimeS = :movingTimeS WHERE id = :id""",
+    )
+    protected abstract suspend fun endRide(
+        id: String,
+        status: RideStatus,
+        endedAt: Long,
+        direction: Direction,
+        distanceM: Double,
+        movingTimeS: Long,
+    )
+
+    @Query("UPDATE routes SET lastRiddenAt = :at WHERE id = :routeId")
+    protected abstract suspend fun markRidden(routeId: String, at: Long)
 }

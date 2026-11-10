@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -22,8 +24,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -50,7 +54,13 @@ import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RouteDetailScreen(viewModel: RouteDetailViewModel, onBack: () -> Unit) {
+fun RouteDetailScreen(
+    viewModel: RouteDetailViewModel,
+    onBack: () -> Unit,
+    /** Starts a ride on this route: reversed or not, simulated (debug builds) or with GPS. */
+    onRide: (route: RouteEntity, reversed: Boolean, simulate: Boolean) -> Unit,
+    showSimulate: Boolean,
+) {
     val load by viewModel.route.collectAsStateWithLifecycle()
     val geometry by viewModel.geometry.collectAsStateWithLifecycle()
     val route = (load as? RouteLoad.Loaded)?.route
@@ -82,11 +92,34 @@ fun RouteDetailScreen(viewModel: RouteDetailViewModel, onBack: () -> Unit) {
                                     menuOpen = false
                                     confirmingDelete = true
                                 })
+                                if (showSimulate) {
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.action_simulate)) }, onClick = {
+                                        menuOpen = false
+                                        onRide(route, false, true)
+                                    })
+                                }
                             }
                         }
                     }
                 },
             )
+        },
+        bottomBar = {
+            if (route != null) {
+                Surface(tonalElevation = 3.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Button(onClick = { onRide(route, false, false) }, Modifier.weight(1f).height(52.dp)) {
+                            Text(stringResource(R.string.action_ride))
+                        }
+                        OutlinedButton(onClick = { onRide(route, true, false) }, Modifier.weight(1f).height(52.dp)) {
+                            Text(stringResource(R.string.action_ride_reversed))
+                        }
+                    }
+                }
+            }
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {

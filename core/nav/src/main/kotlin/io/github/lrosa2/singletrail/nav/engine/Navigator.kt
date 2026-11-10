@@ -223,7 +223,7 @@ class Navigator(
     }
 
     private fun offRoute(fix: Fix, events: MutableList<NavEvent>) {
-        lastGood?.let { offDistance += fix.distanceTo(it) }
+        lastGood?.let { last -> movement(last, fix)?.let { offDistance += it.distance } }
         val long = offDistance >= config.shortDetourMeters
         val radius = threshold - config.backOnRouteMarginMeters
         val c = if (!long) {
@@ -420,13 +420,31 @@ class Navigator(
 
     private fun countMovement(fix: Fix) {
         val last = lastGood ?: return
-        val dt = fix.elapsedNanos - last.elapsedNanos
-        val d = fix.distanceTo(last)
-        val v = fix.speedMps?.toDouble() ?: (d / (dt.toDouble() / NANOS_PER_SECOND))
-        if (v >= config.movingMinSpeedMps) {
-            odometer += d
-            movingNanos += min(dt, (config.noGpsSeconds * NANOS_PER_SECOND).toLong())
+        val move = movement(last, fix) ?: return
+        if (move.speed >= config.movingMinSpeedMps) {
+            odometer += move.distance
+            movingNanos += move.nanos
         }
+    }
+
+    private class Movement(val distance: Double, val speed: Double, val nanos: Long)
+
+    /**
+     * How far the rider went between two good fixes: the fix's own (Doppler) speed over the interval
+     * when it has one, which is much steadier than positions jittering by a few metres; otherwise the
+     * straight line. Null for a jump no bike could make (a stale or wild fix). Long gaps count at most
+     * [NavConfig.noGpsSeconds].
+     */
+    private fun movement(last: Fix, fix: Fix): Movement? {
+        val rawNanos = fix.elapsedNanos - last.elapsedNanos
+        if (rawNanos <= 0) return null
+        val nanos = min(rawNanos, (config.noGpsSeconds * NANOS_PER_SECOND).toLong())
+        val seconds = nanos.toDouble() / NANOS_PER_SECOND
+        val reported = fix.speedMps?.toDouble()
+        if (reported != null) return Movement(reported * seconds, reported, nanos)
+        val d = fix.distanceTo(last)
+        val speed = d / (rawNanos.toDouble() / NANOS_PER_SECOND)
+        return if (speed > MAX_PLAUSIBLE_SPEED_MPS) null else Movement(d, speed, nanos)
     }
 
     // ---- Targets ----
@@ -601,6 +619,9 @@ class Navigator(
 
         /** The reverse check restarts when progress moves forward by this much. */
         private const val REVERSE_RESET_M = 10.0
+
+        /** Faster than this between two fixes (108 km/h) is a GPS jump, not riding. */
+        private const val MAX_PLAUSIBLE_SPEED_MPS = 30.0
 
         /** A turn this far behind the rider is passed: no late alerts for it. */
         private const val PASSED_MARGIN_M = 5.0

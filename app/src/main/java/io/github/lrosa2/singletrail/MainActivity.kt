@@ -8,9 +8,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.IntentCompat
+import androidx.lifecycle.lifecycleScope
 import io.github.lrosa2.singletrail.data.db.SourceKind
 import io.github.lrosa2.singletrail.importing.ImportRequest
 import io.github.lrosa2.singletrail.ui.SingletrailNavHost
+import io.github.lrosa2.singletrail.ui.ride.hasPreciseLocation
+import kotlinx.coroutines.launch
 import io.github.lrosa2.singletrail.ui.theme.SingletrailTheme
 
 class MainActivity : ComponentActivity() {
@@ -24,6 +27,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             SingletrailTheme { SingletrailNavHost(container) }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // A ride left in progress by a crash, kill or reboot carries on now that the app is visible (spec §6).
+        lifecycleScope.launch { container.rideController.resumeIfNeeded(hasPreciseLocation(this@MainActivity)) }
     }
 
     override fun onNewIntent(intent: Intent) {

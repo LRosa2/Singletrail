@@ -173,7 +173,7 @@ class Navigator(route: PreparedRoute, config: NavConfig, mode: RideMode) {
 - Non-maximum suppression within 30 m.
 - **Classes:** slight 40–60° (icon only, no beep by default), turn 60–120°, sharp 120–165°, U-turn > 165°.
 - **Switchback grouping:** three or more sharp/U-turns alternating sides within ≤ 250 m along the route (first to last) become one maneuver, "Switchbacks ×N". A longer stack becomes several groups. Each group gets one *approaching* alert and no *now* alerts.
-- **Storage:** computed for both forward and reverse directions and stored with an `algoVersion`. Recomputed when the algorithm version changes, and (v2) when maps covering the route are installed.
+- **Storage:** computed for both forward and reverse directions and stored with an `algoVersion`. *v1 computes them when a ride starts instead (D44).* Recomputed when the algorithm version changes, and (v2) when maps covering the route are installed.
 - All thresholds live in `NavConfig` and are tuned with replayed rides.
 
 ### 5.4 Turn detection v2 — junction-aware
@@ -351,7 +351,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
 ### 8.3 Files
 - `filesDir/routes/<id>.gpx`: normalised copy of the imported GPX, kept for sharing and re-processing. A route updated from a newer file gets a new file (`<id>-<suffix>.gpx`), so the old copy stays intact until the database points at the new one; `gpxPath` always names the current file.
 - `filesDir/rides/<id>.track`: append-only CSV.
-  - One line per fix: `elapsedMs,lat,lon,ele,acc,speed,bearing,segment`.
+  - One line per fix: `timeMs,elapsedMs,lat,lon,ele,acc,speed,bearing,segment` (`timeMs` is the fix's GPS UTC time, for the GPX export).
   - Survives crashes; a partial last line is ignored.
   - Converted to GPX on export.
 - `filesDir/traces/<rideId>.jsonl`: opt-in debug trace (§11).
@@ -622,6 +622,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D41 | Package name | `applicationId` and namespace `io.github.lrosa2.singletrail` (debug: `.debug` suffix) | Open-source convention without an owned domain; accepted by F-Droid and Play; based on GitHub account LRosa2 | Interview | 2026-11-09 |
 | D42 | Task tracking | Milestone checklist appended to this spec, kept in git | Simple, offline, versioned with the code | Interview | 2026-11-09 |
 | D43 | compileSdk | `compileSdk 37` (targetSdk stays 36); refines D8 | Compose 1.12.x / current AndroidX refuse to build against 36 (AAR metadata check); targetSdk 36 keeps Android 16 runtime rules and Play compliance | Drift Accepted | 2026-11-09 |
+| D44 | Maneuver storage | Maneuvers are computed when a ride starts (both directions, with the route), not stored at import; the `maneuvers` table stays for v2 junction-aware maneuvers. Refines §5.3 "Storage" | Detection takes ~0.1 s for 100 km on a desktop JVM and 0.2–0.7 s for a 1.7 km route on the emulator (with JIT warm-up); loops are re-detected after rotating to the join point anyway; no stale rows after a route update | Implementation | 2026-11-10 |
 
 ---
 
@@ -745,16 +746,21 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Tests: 86 new JVM tests in `:core:nav` (139 total) incl. switchback overshoot and cut-across, out-and-back and figure-8 with GPS noise, alert timing at 5/20/45 km/h and fix age, reverse on a loop, checkpoint round trips, trace replay; mutation-checked: removing the hairpin cap, the target rule or the heading penalty each fails a test
 - [x] Per fix 0.02 ms on a desktop JVM, the same for 5 km and 100 km routes; preparing a 50k-point route in both directions 0.11 s
 - [ ] Time the engine on the G15 (§10 budget: < 5 ms per fix)
-- [ ] Decide in M6 whether maneuvers are stored in Room at import (`maneuvers` table, `turnsAlgoVersion`) or computed at ride start (fast enough on the desktop; loops are re-detected after rotation anyway)
+- [x] Maneuvers are computed when a ride starts, not stored (D44)
 - [ ] Real ride traces as replay fixtures (M10)
 
 ### M6 — Ride service
-- [ ] Location foreground service started from the activity; GPS 1 Hz + GnssStatus
-- [ ] Rotation-vector heading source, compass-off setting
-- [ ] Track recorder (append CSV, segments) + checkpointer (5 s) + recovery on app open
-- [ ] Beeps on the alarm stream + ride-start audio check (volume, DND, Bluetooth)
-- [ ] Ride notification; Battery Saver location-mode check
-- [ ] Simulate-ride debug mode (feeds a trace)
+- [x] `RideService` (location FGS, `START_NOT_STICKY`) started from the visible app; `GPS_PROVIDER` 1 s / 0 m + `GnssStatus` (satellites in view while waiting); permission flow with the §9.3 rationale (fine + coarse, notifications on 13+)
+- [x] `CompassSource`: rotation vector remapped for an upright phone, corrected to true north (`GeomagneticField`), ≤ 4 Hz, accuracy → calibration hint; "compass off" in settings (DataStore)
+- [x] `TrackWriter`/`TrackReader` (flush every 10 points or 10 s, segments, partial last line ignored, stops on low storage or write error with a banner); `CheckpointStore` (atomic JSON every 5 s); recovery when the app opens: straight back to the ride screen, new segment, simulated rides resume simulated
+- [x] Beeps: 8 synthesised tones (`ToneSynth`) on `USAGE_ALARM` with the app's own volume; test beep at ride start; warnings for location off, alarm volume 0, DND blocking alarms, Bluetooth output, notifications off, Battery Saver location mode (re-checked when it changes)
+- [x] Ride notification (silent, ongoing, category navigation, opens the app, no stop action)
+- [x] Simulate ride (debug builds, route menu): follows the route at 6 m/s with 3 m noise; debug trace opt-in writes `traces/<rideId>.jsonl` with a header per segment
+- [x] Basic ride screen (guidance line, arrow, then-line, stats, warnings, reverse Undo/Switch, finish, Stop with confirmation, screen kept on) and "Ride in progress" banner; settings screen (off-route distance, beep volume + test, compass, debug trace, battery helper); app log + crash files + `ApplicationExitInfo` (no coordinates)
+- [x] Engine fix found on the emulator: ride distance and off-route distance use the fix's speed × time (GPS jitter added 40%), and position jumps faster than 108 km/h don't count
+- [x] Verified: 76 app JVM tests (incl. ride session with virtual time, tones, track/checkpoint files, warnings, messages) and 5 ride repository tests on the emulator; on the Pixel 7 API 34 emulator a simulated ride through two turns and a switchback stack survived `am force-stop` and `kill -9` (segments 1–3, resumed from the checkpoint, no false off-route), finished and saved as FINISHED; a GPS ride fed through a test location provider joined the route, showed "No GPS" when fixes stopped; beeps were played on the alarm stream (emulator has no speaker output)
+- [ ] **On the G15:** beeps heard in silent mode, with DND and with Bluetooth; compass direction with the phone on the bars; Battery Saver warning; screen locked with the power button mid-ride; reboot mid-ride; route preparation time (emulator 0.2–0.7 s for 1.7 km)
+- [ ] Replay of a resumed trace starts from a fresh engine, so events after a resume can differ from the ride; restore-aware replay if traces need it (M10)
 
 ### M7 — Offline maps
 - [ ] `mf-v4-map` / `mf-V4-map` link handler with host allowlist + confirm dialog

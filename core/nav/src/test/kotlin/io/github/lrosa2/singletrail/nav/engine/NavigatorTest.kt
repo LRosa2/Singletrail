@@ -186,6 +186,28 @@ class NavigatorTest {
     }
 
     @Test
+    fun `ride distance follows the fix speed, not GPS jitter`() {
+        val ride = Ride(Navigator(line))
+        ride.ride(0 to 0, 0 to 300, noiseM = 4.0)
+        // Jitter of a few metres per fix would add a third or more to a fix-to-fix sum.
+        assertEquals(300.0, ride.state.rideDistanceM, 6.0)
+    }
+
+    @Test
+    fun `a position jump is not ridden distance`() {
+        val ride = Ride(Navigator(line))
+        // A stale fix 9,000 km away, then the rider on the route a second later; neither fix has a speed.
+        val far = at(-9_000_000, 0)
+        ride.fix(Fix(0, far.lat, far.lon, 5f))
+        val p = at(0, 0)
+        ride.fix(Fix(NANOS_PER_SECOND, p.lat, p.lon, 5f))
+        val q = at(0, 5)
+        ride.fix(Fix(2 * NANOS_PER_SECOND, q.lat, q.lon, 5f))
+        assertEquals(5.0, ride.state.rideDistanceM, 0.5)
+        assertEquals(1.0, ride.state.movingSeconds, 0.01)
+    }
+
+    @Test
     fun `ride distance and moving time count only while moving`() {
         val ride = Ride(Navigator(line))
         ride.ride(0 to 0, 0 to 100)

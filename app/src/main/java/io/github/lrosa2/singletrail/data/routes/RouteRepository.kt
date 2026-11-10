@@ -40,6 +40,8 @@ class RouteRepository(
 
     fun observeRoute(id: String): Flow<RouteEntity?> = routes.observe(id)
 
+    suspend fun route(id: String): RouteEntity? = routes.get(id)
+
     suspend fun waypoints(id: String): List<WaypointEntity> = routes.waypoints(id)
 
     fun gpxFile(route: RouteEntity): File = File(filesDir, route.gpxPath)

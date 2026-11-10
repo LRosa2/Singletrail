@@ -2,6 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Location only while riding, in the foreground (spec S5): no background location. Coarse is
+         requested with fine, as Android 12+ requires; the app needs fine to guide. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+
     <!--
         Backup policy (spec D21 / S1): no cloud backup of anything; device-to-device transfer allowed.
         API 31+: data_extraction_rules excludes cloud backup and leaves device transfer on.
@@ -63,6 +74,12 @@
                 <data android:mimeType="text/xml" />
             </intent-filter>
         </activity>
+
+        <!-- The ride (spec §6): started only from the visible app; not exported. -->
+        <service
+            android:name=".ride.RideService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

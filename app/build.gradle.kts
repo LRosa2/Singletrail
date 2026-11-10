@@ -62,6 +62,8 @@ android {
 
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG gates the debug-only "Simulate ride".
+        buildConfig = true
     }
 
     testOptions {
@@ -99,6 +101,8 @@ dependencies {
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.room.runtime)
     ksp(libs.androidx.room.compiler)
     debugImplementation(libs.androidx.compose.ui.tooling)

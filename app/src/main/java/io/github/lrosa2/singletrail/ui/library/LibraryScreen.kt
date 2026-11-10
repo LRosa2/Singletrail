@@ -1,5 +1,7 @@
 package io.github.lrosa2.singletrail.ui.library
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,9 +15,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,9 +38,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +52,8 @@ import io.github.lrosa2.singletrail.R
 import io.github.lrosa2.singletrail.data.db.RouteEntity
 import io.github.lrosa2.singletrail.ui.Formats
 import io.github.lrosa2.singletrail.ui.StarRow
+import io.github.lrosa2.singletrail.util.Sharing
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,22 +61,62 @@ fun LibraryScreen(
     viewModel: LibraryViewModel,
     onOpenRoute: (String) -> Unit,
     onImport: () -> Unit,
-    onSettings: () -> Unit,
+    /** Overflow menu entries: label to action. */
+    menu: List<Pair<String, () -> Unit>>,
+    onBackUp: () -> Unit,
+    /** "Near me" was picked and the position is unknown: find it and call [LibraryViewModel.setHere]. */
+    onNeedLocation: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var menuOpen by remember { mutableStateOf(false) }
+    val selecting = state.selected.isNotEmpty()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val shareTitle = stringResource(R.string.share_routes_title)
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.library_title)) },
-                actions = {
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.action_settings))
-                    }
-                },
-            )
+            if (selecting) {
+                TopAppBar(
+                    title = { Text(pluralStringResource(R.plurals.library_selected, state.selected.size, state.selected.size)) },
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_close))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            scope.launch {
+                                viewModel.shareSelected(Sharing.freshDir(context))?.let {
+                                    Sharing.share(context, it.files, it.mimeType, shareTitle)
+                                    viewModel.clearSelection()
+                                }
+                            }
+                        }) { Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.action_share)) }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.library_title)) },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more))
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                menu.forEach { (label, action) ->
+                                    DropdownMenuItem(text = { Text(label) }, onClick = {
+                                        menuOpen = false
+                                        action()
+                                    })
+                                }
+                            }
+                        }
+                    },
+                )
+            }
         },
         floatingActionButton = {
-            if (state.total > 0) {
+            if (state.total > 0 && !selecting) {
                 ExtendedFloatingActionButton(
                     onClick = onImport,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -79,7 +130,38 @@ fun LibraryScreen(
                 !state.loaded -> Unit
                 state.total == 0 -> EmptyLibrary(onImport)
                 else -> {
-                    FilterRow(state.sort, state.minStars, viewModel::setSort, viewModel::setMinStars)
+                    FilterRow(
+                        state.sort,
+                        state.minStars,
+                        onSort = { sort ->
+                            viewModel.setSort(sort)
+                            if (sort == LibrarySort.NEAR_ME && state.here == null) onNeedLocation()
+                        },
+                        onMinStars = viewModel::setMinStars,
+                    )
+                    if (state.sort == LibrarySort.NEAR_ME && state.here == null) {
+                        when (state.location) {
+                            LocationLookup.FAILED -> Row(
+                                Modifier.padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    stringResource(R.string.library_no_location),
+                                    Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                TextButton(onClick = onNeedLocation) { Text(stringResource(R.string.action_try_again)) }
+                            }
+                            else -> Text(
+                                stringResource(R.string.library_locating),
+                                Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    state.backupDue?.let { BackupBanner(it, onBackUp) }
                     if (state.routes.isEmpty()) {
                         NoMatches(state.minStars ?: 0) { viewModel.setMinStars(null) }
                     } else {
@@ -88,7 +170,13 @@ fun LibraryScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.routes, key = { it.id }) { route ->
-                                RouteCard(route) { onOpenRoute(route.id) }
+                                RouteCard(
+                                    route,
+                                    selected = route.id in state.selected,
+                                    away = state.here?.takeIf { state.sort == LibrarySort.NEAR_ME }?.let { distanceTo(route, it) },
+                                    onClick = { if (selecting) viewModel.toggleSelected(route.id) else onOpenRoute(route.id) },
+                                    onLongClick = { viewModel.toggleSelected(route.id) },
+                                )
                             }
                         }
                     }
@@ -98,17 +186,53 @@ fun LibraryScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RouteCard(route: RouteEntity, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(route.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+private fun RouteCard(route: RouteEntity, selected: Boolean, away: Double?, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val colors = if (selected) {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    } else {
+        CardDefaults.cardColors()
+    }
+    Card(colors = colors, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(route.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    routeSummary(route),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                away?.let {
+                    Text(stringResource(R.string.library_away, Formats.distance(it)), style = MaterialTheme.typography.bodyMedium)
+                }
+                route.rating?.let { StarRow(it) }
+            }
+            if (selected) Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+        }
+    }
+}
+
+@Composable
+private fun BackupBanner(due: BackupDue, onBackUp: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                routeSummary(route),
+                when (due) {
+                    BackupDue.Never -> stringResource(R.string.backup_due_never)
+                    is BackupDue.DaysAgo -> pluralStringResource(R.plurals.backup_due_days, due.days.toInt(), due.days.toInt())
+                },
+                Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            route.rating?.let { StarRow(it) }
+            TextButton(onClick = onBackUp) { Text(stringResource(R.string.action_back_up_now)) }
         }
     }
 }
@@ -131,6 +255,7 @@ private fun FilterRow(
     onMinStars: (Int?) -> Unit,
 ) {
     val sortNames = mapOf(
+        LibrarySort.NEAR_ME to stringResource(R.string.sort_near_me),
         LibrarySort.NAME to stringResource(R.string.sort_name),
         LibrarySort.STARS to stringResource(R.string.sort_stars),
         LibrarySort.LENGTH to stringResource(R.string.sort_length),

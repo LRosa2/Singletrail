@@ -364,7 +364,8 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
    - Share/"open with": `ACTION_VIEW` / `ACTION_SEND` for `application/gpx+xml`, `application/octet-stream` + `.gpx`, `text/xml`.
    - Picker: `ACTION_OPEN_DOCUMENT`, multi-select.
    - Watched folder: persisted `ACTION_OPEN_DOCUMENT_TREE`, read-only, scanned when the app opens.
-   - URL: `https` only, ≤ 20 MB, must parse as GPX.
+   - URL: `https` only, ≤ 20 MB, must parse as GPX (a zip is not accepted from a link).
+   - Zips (backups and route zips) from the picker, "open with" or the share sheet are detected by their signature (§8.5).
 2. **Parse safely** (§9): GPX 1.0 and 1.1.
    - `trk/trkseg/trkpt` → track; multiple segments are joined in order.
    - `rte/rtept` → treated as a track.
@@ -393,7 +394,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
   Before saving, the screen states: **"Contains your ride history (location tracks)."**
 - **Restore / import a zip:**
   - Detects `full-backup` vs `routes`.
-  - For a backup that isn't yours, it offers **routes only** as the default.
+  - For a backup that isn't yours, it offers **routes only** as the default. "Yours" means the manifest's owner id matches this installation's (a fresh install, or cleared app data, gets a new id, so a restore onto a new phone asks).
   - **Merge rules:**
     - Routes are matched by geometry hash; the local name, description and stars win.
     - Imported rides attach to the matched route.
@@ -730,7 +731,7 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Dedupe / "update existing or keep both" / multi-track prompt (split keeps the waypoints within 500 m of each track)
 - [x] Library list (sort by name, stars, length, last ridden; min-stars filter), route detail (outline, stats, stars, description, edit, delete), elevation profile (Canvas)
 - [x] Verified: 35 JVM tests (import queue, row mapping, sorting, formats), 8 repository tests on the emulator; picker, "open with" from the Files app, update, split, delete and dark mode checked by hand on the Pixel 7 API 34 emulator
-- [ ] "Near me" sort (needs location; M9) and remembering sort/filter across app restarts
+- [x] "Near me" sort and remembering sort/filter across app restarts (done in M9)
 - [ ] Large-file warning above 50,000 points (§5.2) is not shown yet
 - [ ] Check import speed of a 50k-point GPX on the G15 (§10 budget: < 3 s)
 
@@ -769,19 +770,28 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [ ] Singletrail MTB theme; multiple map files combined; attribution; coverage check
 
 ### M8 — Ride UI
-- [ ] Map view (banner, heading-up, route ahead/ridden, markers, bottom bar)
-- [ ] Arrow view; swipe; remember last view
-- [ ] All ride states (§4.2); ride lock; reverse auto-accept + undo; volume keys
-- [ ] Dimming policy, 30%/20% battery policy, low-power mode
-- [ ] Finish summary + rating; **first real ride**
+- [ ] Map view (banner, heading-up, route ahead/ridden, markers, bottom bar; back to follow after 10 s): needs M7. Until then the second page is a north-up **route overview** drawn on a Canvas (ridden grey, ahead coloured, skipped part dashed, maneuver dots, rider dot, dashed line to the return target)
+- [x] Arrow view (big arrow from `ArrowLook`: green on route, amber off route, grey with no GPS or a frozen heading; "N" marker in compass mode; "next ↱ in 120 m" / "X to the route" / "Back to the route: X"; satellites while waiting; calibration hint); swipe between the two pages (only when unlocked) or tap the page names; last page remembered (DataStore)
+- [x] All ride states (§4.2) in a high-contrast light theme (`RideTheme`), 30 sp banner coloured by state, status strip (route, simulated, GPS, battery), stats bar, at most two warnings; touch targets ≥ 64 dp
+- [x] Ride lock: locked when the ride screen opens; every touch on the content is swallowed and shows how to unlock; long-press the lock to unlock; locks again 15 s after the last touch; lifts for good at the finish. Stop: long-press, then confirm. Reverse prompt: Undo / Switch now (long-press while locked); volume up = switch, volume down = undo while the app is in front (`PromptKey`); auto-accept after 10 s stays in the engine (M5)
+- [x] Dimming (`ScreenPolicy`, window brightness only): dim level between turns; full brightness within max(50 m, 15 s) of a maneuver, off route, without GPS, in any state other than on-route and for 10 s after a touch; settings "Dim between turns" + dimmed brightness (2–60%); these and the low-power threshold travel in full backups (a backup made before them keeps the phone's own values)
+- [x] Battery (`BatteryPolicy`, sticky `ACTION_BATTERY_CHANGED`): warning 10 points above the low-power threshold, offer of low-power mode at the threshold (setting 10–50%, default 20%), nothing while charging; low-power mode = arrow only, half brightness when needed, dim level halved otherwise
+- [x] Finish card replaces the banner: distance, moving time, stars that rate the route straight away
+- [x] Verified: PC tests gpx 49, nav 143, app 152 (incl. `ScreenPolicy`, `BatteryPolicy`, `PromptKey`, `ArrowLook`, settings in backups); on the Pixel 7 API 34 emulator with a simulated ride on the turns route: lock swallowed a tap and showed the hint; long-press unlocked; route page and page names; relocked after 15 s; window brightness 0.15 between turns and the phone's own near a turn; battery set to 15% → offer → low-power mode (arrow only, brightness 0.5); the ride resumed after a reinstall at FINISHED, unlocked, one finish card; 4 stars saved on the route; hold to stop + confirm returned to the library
+- [ ] Reverse prompt and volume keys on a device: the emulator's location tools give no bearing, so a reversed ride could not be faked (logic covered by engine and `PromptKey` tests)
+- [ ] **First real ride** (on the G15: arrow guidance without maps; lock with gloves and rain; brightness outdoors)
 
 ### M9 — Library extras
-- [ ] Watched folder (SAF tree) + registry + tombstones + "show ignored files"
-- [ ] URL import (https, ≤ 20 MB)
-- [ ] "Near me" sort + map of route starts
-- [ ] Ride history, ride detail, GPX export, delete ride / delete all
-- [ ] Share routes; full backup + restore with merge rules; export reminder
-- [ ] Diagnostics: crash log, exit reasons, opt-in debug trace, share diagnostics
+- [x] Watched folder: persisted read-only tree (Settings → Choose folder), scanned when the app opens (at most once a minute) inside the import queue, so it never races another import; SHA-256 registry per file. New file → route (several tracks joined, no questions); unchanged → skipped; a changed file updates the route it made; a file whose route is already here is linked; a deleted folder route is tombstoned and its file shows under "Ignored files" with *Import anyway*; broken files listed once
+- [x] URL import ("Import from link…"): https only, no credentials in the link, redirects only https → https, app-specific User-Agent, 20 MB cap by declared size and while reading, must parse as GPX, preview before adding; `INTERNET` permission for user-started downloads only
+- [x] "Near me" sort: one location request (network ≤ 10 s, GPS ≤ 30 s with precise permission, else the newest last-known position), distance to the nearer end of each route, "Try again" when nothing is found; sort and minimum stars remembered (near me falls back to name after a restart)
+- [x] Ride history (menu → Ride history), ride detail (track outline, date, result, distance, moving time, climb from the recorded elevation, direction, segments), *Export GPX* (one `trkseg` per segment, UTC times), delete ride with its track and trace, *Delete all ride history*; the route page lists its rides; deleting a route asks "Also delete its N rides"
+- [x] Share routes (long-press to select; one GPX, or `Singletrail routes.zip` with a `routes` manifest) and *Share route* on the route page; current name and description, no stars, no rides
+- [x] Full backup (menu → Back up…, warns that it holds location history; system "save as"): `manifest.json` with a random per-install owner id, `routes.json`, `rides.json`, `settings.json`, GPX per route and per ride. Restore through Import or Settings → Restore: own backup → *Restore*; someone else's → *Routes only* first or *Routes and rides*; routes matched by geometry either way round (local copy wins), rides attach to the matched route and are de-duplicated by id, settings taken over only with everything; reminder banner when rides were never backed up or the last backup is over 30 days old
+- [x] Zips are read safely (S3): entry count and size caps enforced while reading, path-escaping and unexpected entries ignored, GPX through the safe reader; zips accepted from the picker, "open with" and the share sheet
+- [x] Diagnostics: crash files, exit reasons and import outcomes in the app log (no positions); *Share logs* / *Share logs and traces* zip through the share sheet
+- [x] Verified: 139 app JVM tests (backup zip, restorer, import queue with archives and jobs, watched folder scanner, URL source, ride GPX and climb, reminder, near me, file names, diagnostics zip) and 10 ride repository tests on the emulator; on the emulator: history and detail, GPX export, delete, backup → wipe app data → restore of 2 routes and 3 rides, near me, sharing two routes as a zip, link import errors (404, web page), watched folder scan (4 added, 4 linked, 1 rejected), delete → ignored → import anyway, share logs
+- [ ] Map of route starts (needs the map renderer, M7)
 
 ### M10 — Field tuning & release
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures

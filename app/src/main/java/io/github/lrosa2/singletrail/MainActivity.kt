@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,6 +12,7 @@ import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.lrosa2.singletrail.data.db.SourceKind
 import io.github.lrosa2.singletrail.importing.ImportRequest
+import io.github.lrosa2.singletrail.ride.PromptKey
 import io.github.lrosa2.singletrail.ui.SingletrailNavHost
 import io.github.lrosa2.singletrail.ui.ride.hasPreciseLocation
 import kotlinx.coroutines.launch
@@ -33,6 +35,18 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // A ride left in progress by a crash, kill or reboot carries on now that the app is visible (spec §6).
         lifecycleScope.launch { container.rideController.resumeIfNeeded(hasPreciseLocation(this@MainActivity)) }
+        // The watched folder is scanned when the app opens (spec §8.4).
+        lifecycleScope.launch { container.watchedFolder.scanIfDue() }
+    }
+
+    /** Volume keys answer the reverse prompt while the app is in front (spec §4.5); otherwise they change the volume. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val phase = container.rideController.ride.value?.nav?.phase ?: return super.onKeyDown(keyCode, event)
+        return when (PromptKey.of(keyCode, phase)) {
+            PromptKey.ACCEPT -> true.also { container.rideController.acceptReverse() }
+            PromptKey.UNDO -> true.also { container.rideController.undoReverse() }
+            null -> super.onKeyDown(keyCode, event)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -101,6 +101,24 @@ private fun QuestionDialog(question: ImportQuestion, onAnswer: (ImportAnswer) ->
             Preview(question.preview)
         }
 
+        is ImportQuestion.RestoreBackup -> if (question.fromThisPhone) {
+            ChoiceDialog(
+                title = stringResource(R.string.import_restore_title),
+                onDismiss = { onAnswer(ImportAnswer.CANCEL) },
+                choices = listOf(stringResource(R.string.import_restore) to { onAnswer(ImportAnswer.RESTORE) }, cancel),
+            ) { Text(stringResource(R.string.import_restore_body, question.fileName, question.routes, question.rides)) }
+        } else {
+            ChoiceDialog(
+                title = stringResource(R.string.import_restore_foreign_title),
+                onDismiss = { onAnswer(ImportAnswer.CANCEL) },
+                choices = listOf(
+                    stringResource(R.string.import_routes_only) to { onAnswer(ImportAnswer.ROUTES_ONLY) },
+                    stringResource(R.string.import_restore_everything) to { onAnswer(ImportAnswer.RESTORE) },
+                    cancel,
+                ),
+            ) { Text(stringResource(R.string.import_restore_foreign_body, question.fileName, question.routes, question.rides)) }
+        }
+
         is ImportQuestion.MultipleTracks -> {
             val count = question.trackNames.size
             ChoiceDialog(
@@ -238,6 +256,13 @@ private fun outcomeText(outcome: ImportOutcome): String = when (outcome) {
         stringResource(if (outcome.reversed) R.string.import_already_reversed else R.string.import_already)
     ImportOutcome.Skipped -> ""
     is ImportOutcome.Failed -> stringResource(problemText(outcome.problem))
+    is ImportOutcome.Restored -> with(outcome.summary) {
+        if (failed == 0) {
+            stringResource(R.string.import_restored, routesAdded, routesKept, ridesAdded)
+        } else {
+            stringResource(R.string.import_restored_failed, routesAdded, routesKept, ridesAdded, failed)
+        }
+    }
 }
 
 private fun problemText(problem: ImportProblem): Int = when (problem) {
@@ -252,4 +277,5 @@ private fun problemText(problem: ImportProblem): Int = when (problem) {
     ImportProblem.TOO_SHORT -> R.string.problem_too_short
     ImportProblem.UNREADABLE -> R.string.problem_unreadable
     ImportProblem.SAVE_FAILED -> R.string.problem_save_failed
+    ImportProblem.DOWNLOAD_FAILED -> R.string.problem_download_failed
 }

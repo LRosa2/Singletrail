@@ -556,6 +556,8 @@ class Navigator(
             skipped = skipped.toList(),
             rideDistanceM = odometer,
             movingSeconds = movingNanos.toDouble() / NANOS_PER_SECOND,
+            speedMps = speed.current,
+            position = lastFix?.let { LatLon(it.lat, it.lon) },
         )
     }
 

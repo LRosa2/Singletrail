@@ -1,6 +1,10 @@
 package io.github.lrosa2.singletrail.importing
 
+import io.github.lrosa2.singletrail.backup.BackupArchive
+import io.github.lrosa2.singletrail.backup.BackupRestorer
+import io.github.lrosa2.singletrail.backup.RestoreSummary
 import io.github.lrosa2.singletrail.data.db.SourceKind
+import java.io.File
 import io.github.lrosa2.singletrail.gpx.GpxDocument
 import io.github.lrosa2.singletrail.gpx.GpxParseException
 import io.github.lrosa2.singletrail.gpx.GpxTrack
@@ -12,6 +16,14 @@ import io.github.lrosa2.singletrail.nav.RoutePosition
 /** One file to import. [confirm] shows a preview with "Add to library" before storing it. */
 data class ImportRequest(val uri: String, val kind: SourceKind, val confirm: Boolean)
 
+/** What an import request turned out to hold. */
+sealed interface LoadedFile {
+    data class Gpx(val doc: GpxDocument) : LoadedFile
+
+    /** A zip, copied to a temporary [file] that the import queue deletes when it is done. */
+    data class Archive(val file: File) : LoadedFile
+}
+
 /** Opens and parses an import request. */
 interface GpxSource {
     /** The file's name to show in messages, or null when unknown. Never throws. */
@@ -21,8 +33,21 @@ interface GpxSource {
      * @throws GpxParseException when the content isn't safe, valid GPX
      * @throws java.io.IOException or [SecurityException] when it can't be read
      */
-    suspend fun load(request: ImportRequest): GpxDocument
+    suspend fun load(request: ImportRequest): LoadedFile
 }
+
+/** A link that couldn't be downloaded (spec §8.4, S4). */
+class DownloadException(val reason: Reason, message: String) : java.io.IOException(message) {
+    enum class Reason { NOT_HTTPS, HTTP_ERROR, TOO_LARGE }
+}
+
+/** Zips in the import queue (spec §8.5: "Import detects which kind of file it is"). */
+class ArchiveSupport(
+    val open: (File) -> BackupArchive,
+    val restorer: BackupRestorer,
+    /** This installation's backup owner id, to recognise its own full backups. */
+    val ownerId: suspend () -> String,
+)
 
 /** What the import queue needs from the route library. */
 interface RouteLibrary {
@@ -66,7 +91,7 @@ data class RoutePreview(
     val outline: List<RoutePosition>,
 )
 
-enum class ImportAnswer { ADD, SPLIT, JOIN, UPDATE, KEEP_BOTH, CANCEL }
+enum class ImportAnswer { ADD, SPLIT, JOIN, UPDATE, KEEP_BOTH, RESTORE, ROUTES_ONLY, CANCEL }
 
 /** A decision the import queue waits for before it continues. */
 sealed interface ImportQuestion {
@@ -88,12 +113,29 @@ sealed interface ImportQuestion {
     ) : ImportQuestion {
         override val options = listOf(ImportAnswer.UPDATE, ImportAnswer.KEEP_BOTH, ImportAnswer.CANCEL)
     }
+
+    /**
+     * A full backup (spec §8.5). Someone else's backup offers its routes only as the default, since
+     * its rides are another person's location history.
+     */
+    data class RestoreBackup(
+        override val fileName: String,
+        val routes: Int,
+        val rides: Int,
+        val fromThisPhone: Boolean,
+    ) : ImportQuestion {
+        override val options = if (fromThisPhone) {
+            listOf(ImportAnswer.RESTORE, ImportAnswer.CANCEL)
+        } else {
+            listOf(ImportAnswer.ROUTES_ONLY, ImportAnswer.RESTORE, ImportAnswer.CANCEL)
+        }
+    }
 }
 
 /** Why a file or track couldn't be imported. */
 enum class ImportProblem {
     NOT_GPX, DAMAGED, UNSAFE_XML, TOO_LARGE, TOO_MANY_POINTS, TOO_MANY_WAYPOINTS, TOO_MANY_TRACKS,
-    NO_TRACK, TOO_SHORT, UNREADABLE, SAVE_FAILED,
+    NO_TRACK, TOO_SHORT, UNREADABLE, SAVE_FAILED, DOWNLOAD_FAILED,
 }
 
 sealed interface ImportOutcome {
@@ -102,6 +144,7 @@ sealed interface ImportOutcome {
     data class AlreadyInLibrary(val routeId: String, val reversed: Boolean) : ImportOutcome
     data object Skipped : ImportOutcome
     data class Failed(val problem: ImportProblem) : ImportOutcome
+    data class Restored(val summary: RestoreSummary) : ImportOutcome
 }
 
 data class ImportResult(val fileName: String, val routeName: String?, val outcome: ImportOutcome)

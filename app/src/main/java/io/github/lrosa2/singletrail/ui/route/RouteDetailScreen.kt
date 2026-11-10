@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -38,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,7 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrosa2.singletrail.R
+import io.github.lrosa2.singletrail.data.db.RideEntity
 import io.github.lrosa2.singletrail.data.db.RouteEntity
+import io.github.lrosa2.singletrail.ui.rides.RideCard
 import io.github.lrosa2.singletrail.ui.Formats
 import io.github.lrosa2.singletrail.ui.RouteOutline
 import io.github.lrosa2.singletrail.ui.StarRating
@@ -60,9 +65,13 @@ fun RouteDetailScreen(
     /** Starts a ride on this route: reversed or not, simulated (debug builds) or with GPS. */
     onRide: (route: RouteEntity, reversed: Boolean, simulate: Boolean) -> Unit,
     showSimulate: Boolean,
+    onOpenRide: (String) -> Unit,
+    onShare: (RouteEntity) -> Unit,
 ) {
     val load by viewModel.route.collectAsStateWithLifecycle()
     val geometry by viewModel.geometry.collectAsStateWithLifecycle()
+    val rides by viewModel.rides.collectAsStateWithLifecycle()
+    var deleteRides by rememberSaveable { mutableStateOf(false) }
     val route = (load as? RouteLoad.Loaded)?.route
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var editing by rememberSaveable { mutableStateOf(false) }
@@ -84,6 +93,10 @@ fun RouteDetailScreen(
                                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more))
                             }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.action_share_route)) }, onClick = {
+                                    menuOpen = false
+                                    onShare(route)
+                                })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.action_edit)) }, onClick = {
                                     menuOpen = false
                                     editing = true
@@ -130,7 +143,7 @@ fun RouteDetailScreen(
                     Modifier.padding(24.dp),
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                is RouteLoad.Loaded -> RouteDetails(current.route, geometry, viewModel::setRating)
+                is RouteLoad.Loaded -> RouteDetails(current.route, geometry, viewModel::setRating, rides, onOpenRide)
             }
         }
     }
@@ -145,11 +158,25 @@ fun RouteDetailScreen(
         AlertDialog(
             onDismissRequest = { confirmingDelete = false },
             title = { Text(stringResource(R.string.delete_title)) },
-            text = { Text(stringResource(R.string.delete_body, route.name)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.delete_body, route.name))
+                    // Spec §8.6: "Also delete its N rides?" Kept rides keep the route's name.
+                    if (rides.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().toggleable(value = deleteRides, onValueChange = { deleteRides = it }),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = deleteRides, onCheckedChange = null)
+                            Text(pluralStringResource(R.plurals.delete_route_rides, rides.size, rides.size), Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     confirmingDelete = false
-                    viewModel.delete(onDeleted = onBack)
+                    viewModel.delete(withRides = deleteRides, onDeleted = onBack)
                 }) { Text(stringResource(R.string.action_delete)) }
             },
             dismissButton = {
@@ -160,7 +187,13 @@ fun RouteDetailScreen(
 }
 
 @Composable
-private fun RouteDetails(route: RouteEntity, geometry: GeometryLoad, onRate: (Int?) -> Unit) {
+private fun RouteDetails(
+    route: RouteEntity,
+    geometry: GeometryLoad,
+    onRate: (Int?) -> Unit,
+    rides: List<RideEntity>,
+    onOpenRide: (String) -> Unit,
+) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -204,7 +237,13 @@ private fun RouteDetails(route: RouteEntity, geometry: GeometryLoad, onRate: (In
         }
 
         Section(stringResource(R.string.detail_rides)) {
-            Text(stringResource(R.string.detail_no_rides))
+            if (rides.isEmpty()) {
+                Text(stringResource(R.string.detail_no_rides))
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rides.forEach { ride -> RideCard(ride, showRoute = false) { onOpenRide(ride.id) } }
+                }
+            }
         }
 
         val imported = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(route.importedAt))

@@ -96,7 +96,13 @@ data class NavState(
     val skipped: List<RouteRange>,
     val rideDistanceM: Double,
     val movingSeconds: Double,
+    /** Speed averaged over the last few seconds (spec §5.10), m/s. */
+    val speedMps: Double = 0.0,
+    /** Where the latest fix put the rider, accurate or not; null before the first fix. */
+    val position: LatLon? = null,
 )
+
+data class LatLon(val lat: Double, val lon: Double)
 
 /** Things that happened on one input; the ride service turns these into tones (spec §4.3). */
 sealed interface NavEvent {

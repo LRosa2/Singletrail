@@ -1,7 +1,21 @@
 package io.github.lrosa2.singletrail.importing
 
+import io.github.lrosa2.singletrail.backup.BackupArchive
+import io.github.lrosa2.singletrail.backup.BackupManifest
+import io.github.lrosa2.singletrail.backup.BackupRestorer
+import io.github.lrosa2.singletrail.backup.BackupRide
+import io.github.lrosa2.singletrail.backup.BackupRoute
+import io.github.lrosa2.singletrail.backup.BackupZip
+import io.github.lrosa2.singletrail.backup.RestoreSummary
+import io.github.lrosa2.singletrail.backup.RestoreTarget
 import io.github.lrosa2.singletrail.data.db.SourceKind
+import io.github.lrosa2.singletrail.data.rides.TrackPoint
 import io.github.lrosa2.singletrail.doc
+import io.github.lrosa2.singletrail.gpx.GpxReader
+import io.github.lrosa2.singletrail.nav.RouteIdentity
+import org.junit.jupiter.api.io.TempDir
+import org.kxml2.io.KXmlParser
+import java.io.File
 import io.github.lrosa2.singletrail.gpx.GpxDocument
 import io.github.lrosa2.singletrail.gpx.GpxParseException
 import io.github.lrosa2.singletrail.gpx.GpxParseException.Reason
@@ -63,15 +77,36 @@ class ImportCoordinatorTest {
     private val library = FakeLibrary()
     private val names = HashMap<String, String>()
     private val files = HashMap<String, GpxDocument>()
+    private val zips = HashMap<String, File>()
     private val failures = HashMap<String, Exception>()
     private val source = object : GpxSource {
         override suspend fun displayName(request: ImportRequest) = names[request.uri]
 
-        override suspend fun load(request: ImportRequest): GpxDocument {
+        override suspend fun load(request: ImportRequest): LoadedFile {
             failures[request.uri]?.let { throw it }
-            return files.getValue(request.uri)
+            zips[request.uri]?.let { return LoadedFile.Archive(it) }
+            return LoadedFile.Gpx(files.getValue(request.uri))
         }
     }
+
+    @TempDir
+    lateinit var dir: File
+
+    /** Restores into a list, so tests can see what a restore did. */
+    private val restored = ArrayList<String>()
+    private val restoredRides = ArrayList<String>()
+    private val restoreTarget = object : RestoreTarget {
+        override suspend fun routeWithGeometry(hashes: RouteIdentity.GeometryHashes): String? = null
+        override suspend fun addRoute(route: NewRoute, rating: Int?, importedAt: Long, lastRiddenAt: Long?): String {
+            restored += route.name
+            return "b${restored.size}"
+        }
+        override suspend fun hasRide(id: String) = false
+        override suspend fun addRide(ride: BackupRide, routeId: String?, points: List<TrackPoint>) {
+            restoredRides += ride.id
+        }
+    }
+    private val gpxReader = GpxReader({ KXmlParser() })
 
     /** 1 km east from the origin. */
     private val east = line(0 to 0, 1000 to 0)
@@ -89,7 +124,33 @@ class ImportCoordinatorTest {
     private fun TestScope.coordinator(): ImportCoordinator {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(SupervisorJob() + dispatcher).also { queueScopes += it }
-        return ImportCoordinator(source, library, scope, dispatcher)
+        val archives = ArchiveSupport(
+            open = { BackupArchive.open(it, { input -> gpxReader.read(input) }) },
+            restorer = BackupRestorer(restoreTarget, dispatcher),
+            ownerId = { "me" },
+        )
+        return ImportCoordinator(source, library, scope, dispatcher, archives)
+    }
+
+    /** A full backup made by [owner] with one route and one ride. */
+    private fun backupZip(uri: String, owner: String): File {
+        val file = File(dir, "$uri.zip")
+        val route = BackupRoute("r1", "Backed up", importedAt = 1, geometryHash = "h", file = "routes/r1.gpx")
+        val ride = BackupRide("d1", "r1", null, "Backed up", "FORWARD", 5, 6, "FINISHED", 10.0, 2, null, 1, "rides/d1.gpx")
+        file.outputStream().use {
+            BackupZip.writeFull(
+                it,
+                BackupManifest(kind = BackupManifest.KIND_FULL, app = "t", createdAt = 1, owner = owner, routes = 1, rides = 1),
+                listOf(route),
+                { doc(track("Backed up", east)) },
+                listOf(ride),
+                { doc(track("ride", north)) },
+                null,
+            )
+        }
+        zips[uri] = file
+        names[uri] = "$uri.zip"
+        return file
     }
 
     private fun file(uri: String, displayName: String?, document: GpxDocument) {
@@ -392,5 +453,118 @@ class ImportCoordinatorTest {
         assertEquals(listOf("A", "B"), library.names())
         c.clearResults()
         assertTrue(c.state.value.results.isEmpty())
+    }
+
+    @Test
+    fun `a backup from this phone asks before restoring everything`() = runTest {
+        val zip = backupZip("mine", owner = "me")
+        val c = coordinator()
+        c.enqueue(picked("mine"))
+        advanceUntilIdle()
+
+        val question = c.state.value.question as ImportQuestion.RestoreBackup
+        assertTrue(question.fromThisPhone)
+        assertEquals(1, question.routes)
+        assertEquals(1, question.rides)
+        assertEquals(listOf(ImportAnswer.RESTORE, ImportAnswer.CANCEL), question.options)
+        c.answer(ImportAnswer.RESTORE)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Backed up"), restored)
+        assertEquals(listOf("d1"), restoredRides)
+        assertEquals(listOf<ImportOutcome>(ImportOutcome.Restored(RestoreSummary(1, 0, 1, 0, 0))), c.outcomes())
+        assertFalse(zip.exists(), "the temporary copy is deleted")
+    }
+
+    @Test
+    fun `a backup from another phone offers routes only first`() = runTest {
+        backupZip("theirs", owner = "someone else")
+        val c = coordinator()
+        c.enqueue(shared("theirs"))
+        advanceUntilIdle()
+
+        val question = c.state.value.question as ImportQuestion.RestoreBackup
+        assertFalse(question.fromThisPhone)
+        assertEquals(listOf(ImportAnswer.ROUTES_ONLY, ImportAnswer.RESTORE, ImportAnswer.CANCEL), question.options)
+        c.answer(ImportAnswer.ROUTES_ONLY)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Backed up"), restored)
+        assertTrue(restoredRides.isEmpty())
+    }
+
+    @Test
+    fun `cancelling a backup restores nothing`() = runTest {
+        backupZip("mine", owner = "me")
+        val c = coordinator()
+        c.enqueue(picked("mine"))
+        advanceUntilIdle()
+        c.answer(ImportAnswer.CANCEL)
+        advanceUntilIdle()
+
+        assertTrue(restored.isEmpty())
+        assertEquals(listOf<ImportOutcome>(ImportOutcome.Skipped), c.outcomes())
+    }
+
+    @Test
+    fun `a zip of routes imports each one`() = runTest {
+        val file = File(dir, "routes.zip")
+        file.outputStream().use {
+            BackupZip.writeRoutes(it, "t", 1, listOf("East" to doc(track("East", east)), "North" to doc(track("North", north))))
+        }
+        zips["z"] = file
+        names["z"] = "routes.zip"
+        val c = coordinator()
+        c.enqueue(shared("z"))
+        advanceUntilIdle()
+
+        // Routes from a zip go in without a preview each; similar ones would still ask.
+        assertNull(c.state.value.question)
+        assertEquals(listOf("East", "North"), library.names())
+        assertEquals(listOf("East.gpx", "North.gpx"), c.state.value.results.map { it.fileName })
+        assertEquals(listOf("East.gpx", "North.gpx"), library.routes.values.map { it.route.sourceRef })
+    }
+
+    @Test
+    fun `a job runs in turn with the files and reports its results`() = runTest {
+        file("u1", "a.gpx", doc(track("A", east)))
+        file("u2", "b.gpx", doc(track("B", north)))
+        val order = ArrayList<String>()
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        c.enqueueJob("Watched folder") {
+            order += "job saw ${library.names()}"
+            listOf(ImportResult("c.gpx", "C", ImportOutcome.Added("x")))
+        }
+        c.enqueue(picked("u2"))
+        assertEquals(3, c.state.value.queued)
+        advanceUntilIdle()
+
+        assertEquals(listOf("job saw [A]"), order)
+        assertEquals(listOf("a.gpx", "c.gpx", "b.gpx"), c.state.value.results.map { it.fileName })
+        assertFalse(c.state.value.busy)
+    }
+
+    @Test
+    fun `a failing job doesn't stop the queue`() = runTest {
+        file("u1", "a.gpx", doc(track("A", east)))
+        val c = coordinator()
+        c.enqueueJob("Watched folder") { throw IllegalStateException("boom") }
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("A"), library.names())
+        assertFalse(c.state.value.busy)
+    }
+
+    @Test
+    fun `a damaged zip fails like a damaged file`() = runTest {
+        zips["bad"] = File(dir, "bad.zip").apply { writeText("PK not really") }
+        names["bad"] = "bad.zip"
+        val c = coordinator()
+        c.enqueue(picked("bad"))
+        advanceUntilIdle()
+
+        assertEquals(listOf<ImportOutcome>(ImportOutcome.Failed(ImportProblem.DAMAGED)), c.outcomes())
     }
 }

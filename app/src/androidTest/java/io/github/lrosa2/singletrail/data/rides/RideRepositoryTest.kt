@@ -14,6 +14,7 @@ import io.github.lrosa2.singletrail.newRoute
 import io.github.lrosa2.singletrail.nav.engine.NavCheckpoint
 import io.github.lrosa2.singletrail.nav.engine.RidePhase
 import io.github.lrosa2.singletrail.track
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -95,6 +96,72 @@ class RideRepositoryTest {
         val ride = rides.start(addRoute(), "Loop", reversed = false)
         rides.finish(ride.id, completed = false, reversed = false, distanceM = 10.0, movingSeconds = 5.0)
         assertEquals(RideStatus.ABANDONED, rides.get(ride.id)!!.status)
+    }
+
+    private fun writeTrack(ride: io.github.lrosa2.singletrail.data.db.RideEntity, climbM: Double) {
+        TrackWriter(rides.trackFile(ride), segment = 1, freeBytes = { Long.MAX_VALUE }).use { w ->
+            for (k in 0..120) {
+                val y = k * 5.0
+                w.append(TrackPoint(k * 1000L, k * 1000L, io.github.lrosa2.singletrail.Plane.lat(y), io.github.lrosa2.singletrail.Plane.lon(0.0), 1000 + climbM * k / 120, 4f, 5f, 0f, 1))
+            }
+        }
+    }
+
+    @Test
+    fun finishingStoresTheClimbFromTheTrack() = runTest {
+        val ride = rides.start(addRoute(), "Loop", reversed = false)
+        writeTrack(ride, climbM = 60.0)
+        rides.finish(ride.id, completed = true, reversed = false, distanceM = 600.0, movingSeconds = 120.0)
+        assertEquals(60.0, rides.get(ride.id)!!.ascentM!!, 4.0)
+    }
+
+    @Test
+    fun ridesAreListedNewestFirstWithoutTheOneInProgress() = runTest {
+        val routeId = addRoute()
+        val first = rides.start(routeId, "Loop", reversed = false)
+        rides.finish(first.id, completed = true, reversed = false, distanceM = 1.0, movingSeconds = 1.0)
+        now = 6_000L
+        val second = rides.start(routeId, "Loop", reversed = false)
+        rides.finish(second.id, completed = false, reversed = false, distanceM = 1.0, movingSeconds = 1.0)
+        now = 7_000L
+        rides.start(routeId, "Loop", reversed = false)
+        assertEquals(listOf(second.id, first.id), rides.observeRides().first().map { it.id })
+        assertEquals(listOf(second.id, first.id), rides.observeRidesOf(routeId).first().map { it.id })
+    }
+
+    @Test
+    fun deletingARideRemovesItsFiles() = runTest {
+        val ride = rides.start(addRoute(), "Loop", reversed = false)
+        writeTrack(ride, climbM = 10.0)
+        rides.traceFile(ride.id).apply { parentFile!!.mkdirs(); writeText("{}") }
+        rides.finish(ride.id, completed = true, reversed = false, distanceM = 1.0, movingSeconds = 1.0)
+        rides.delete(ride.id)
+        assertNull(rides.get(ride.id))
+        assertEquals(false, rides.trackFile(ride).exists())
+        assertEquals(false, rides.traceFile(ride.id).exists())
+    }
+
+    @Test
+    fun deleteAllKeepsTheRideInProgress() = runTest {
+        val routeId = addRoute()
+        val done = rides.start(routeId, "Loop", reversed = false)
+        writeTrack(done, climbM = 10.0)
+        rides.finish(done.id, completed = true, reversed = false, distanceM = 1.0, movingSeconds = 1.0)
+        val riding = rides.start(routeId, "Loop", reversed = false)
+        assertEquals(1, rides.deleteAll())
+        assertNull(rides.get(done.id))
+        assertEquals(false, rides.trackFile(done).exists())
+        assertNotNull(rides.get(riding.id))
+    }
+
+    @Test
+    fun aRoutesRidesCanBeDeletedWithIt() = runTest {
+        val routeId = addRoute()
+        val ride = rides.start(routeId, "Loop", reversed = false)
+        rides.finish(ride.id, completed = true, reversed = false, distanceM = 1.0, movingSeconds = 1.0)
+        assertEquals(1, rides.countForRoute(routeId))
+        rides.deleteForRoute(routeId)
+        assertNull(rides.get(ride.id))
     }
 
     @Test

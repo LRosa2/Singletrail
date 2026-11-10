@@ -22,6 +22,8 @@ import io.github.lrosa2.singletrail.data.rides.TrackPoint
 import io.github.lrosa2.singletrail.data.rides.TrackWriter
 import io.github.lrosa2.singletrail.data.settings.RideSettings
 import io.github.lrosa2.singletrail.nav.NavRoute
+import io.github.lrosa2.singletrail.nav.PreparedRoute
+import io.github.lrosa2.singletrail.util.thinTo
 import io.github.lrosa2.singletrail.nav.engine.NavCheckpoint
 import io.github.lrosa2.singletrail.nav.engine.NavState
 import io.github.lrosa2.singletrail.nav.engine.Navigator
@@ -142,7 +144,7 @@ class RideService : Service() {
         val ride = container.rides.start(routeId, route.name, reversed)
         container.log.log(TAG, "Start ride ${ride.id} reversed=$reversed simulated=$simulate")
         val navigator = Navigator(navRoute, settings.navConfig(), RideMode(reversed))
-        launchRide(ride, navigator, segment = 1, simulate, settings, fresh = true, routeHash = route.geometryHash)
+        launchRide(ride, navigator, segment = 1, simulate, settings, fresh = true, routeHash = route.geometryHash, rating = route.rating)
     }
 
     private suspend fun resumeRide() {
@@ -164,7 +166,10 @@ class RideService : Service() {
         }
         val segment = rides.startSegment(ride.id)
         container.log.log(TAG, "Resume ride ${ride.id} segment=$segment checkpoint=${checkpoint?.nav?.phase}")
-        launchRide(ride, navigator, segment, checkpoint?.simulated ?: false, settings, fresh = false, routeHash = route.geometryHash)
+        launchRide(
+            ride, navigator, segment, checkpoint?.simulated ?: false, settings, fresh = false,
+            routeHash = route.geometryHash, rating = route.rating,
+        )
     }
 
     private suspend fun loadNavRoute(routeId: String): NavRoute? = try {
@@ -188,6 +193,7 @@ class RideService : Service() {
         settings: RideSettings,
         fresh: Boolean,
         routeHash: String,
+        rating: Int?,
     ) {
         val rides = container.rides
         val controller = container.rideController
@@ -243,14 +249,24 @@ class RideService : Service() {
         // Ride-start audio check (spec §4.3): a test beep, and warnings for anything that would silence it.
         if (fresh) beeper.beep(Tone.APPROACHING)
         controller.session = session
+        var outlineOf: PreparedRoute = navigator.route
+        var outline = outlineOf.samples.thinTo(OUTLINE_POINTS)
         controller.publish(
-            RideUi(ride.id, ride.routeNameSnapshot, simulated, navigator.state, navigator.maneuvers, currentWarnings()),
+            RideUi(
+                ride.id, ride.routeNameSnapshot, simulated, navigator.state, navigator.maneuvers, currentWarnings(),
+                routeId = ride.routeId, rating = rating, outline = outline,
+            ),
         )
         val job = scope.launch {
             try {
                 launch {
                     session.state.collectLatest { state ->
-                        controller.update { it.copy(nav = state, maneuvers = navigator.maneuvers) }
+                        // The course changes when a loop is joined or the direction reverses.
+                        if (navigator.route !== outlineOf) {
+                            outlineOf = navigator.route
+                            outline = outlineOf.samples.thinTo(OUTLINE_POINTS)
+                        }
+                        controller.update { it.copy(nav = state, maneuvers = navigator.maneuvers, outline = outline) }
                         updateNotification(ride.routeNameSnapshot, state, gps.satellitesInView)
                     }
                 }
@@ -378,6 +394,9 @@ class RideService : Service() {
 
         /** About 22 km/h: brisk enough to reach the turns at a desk, slow enough to watch. */
         private const val SIMULATED_SPEED_MPS = 6.0
+
+        /** Points in the route view's outline; plenty for a phone screen. */
+        private const val OUTLINE_POINTS = 800
 
         fun startIntent(context: Context, routeId: String, reversed: Boolean, simulate: Boolean): Intent =
             Intent(context, RideService::class.java).setAction(ACTION_START)

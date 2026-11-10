@@ -2,8 +2,10 @@ package io.github.lrosa2.singletrail.ui.route
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.lrosa2.singletrail.data.db.RideEntity
 import io.github.lrosa2.singletrail.data.db.RouteEntity
 import io.github.lrosa2.singletrail.data.db.WaypointEntity
+import io.github.lrosa2.singletrail.data.rides.RideRepository
 import io.github.lrosa2.singletrail.data.routes.RouteRepository
 import io.github.lrosa2.singletrail.nav.RoutePosition
 import io.github.lrosa2.singletrail.util.thinTo
@@ -37,11 +39,19 @@ sealed interface GeometryLoad {
     ) : GeometryLoad
 }
 
-class RouteDetailViewModel(private val repository: RouteRepository, private val id: String) : ViewModel() {
+class RouteDetailViewModel(
+    private val repository: RouteRepository,
+    private val rideRepository: RideRepository,
+    private val id: String,
+) : ViewModel() {
 
     val route: StateFlow<RouteLoad> = repository.observeRoute(id)
         .map { if (it == null) RouteLoad.Missing else RouteLoad.Loaded(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RouteLoad.Loading)
+
+    /** This route's recorded rides, newest first (spec §8.1). */
+    val rides: StateFlow<List<RideEntity>> = rideRepository.observeRidesOf(id)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Reloaded only when the geometry changes (an "Update existing route" import), not on a rename or new stars. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,8 +69,10 @@ class RouteDetailViewModel(private val repository: RouteRepository, private val 
         viewModelScope.launch { repository.edit(id, name, description) }
     }
 
-    fun delete(onDeleted: () -> Unit) {
+    /** Deletes the route and, when asked, its rides; otherwise the rides stay in history (spec §8.6). */
+    fun delete(withRides: Boolean, onDeleted: () -> Unit) {
         viewModelScope.launch {
+            if (withRides) rideRepository.deleteForRoute(id)
             repository.delete(id)
             onDeleted()
         }

@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Only for downloads the user starts: a GPX link (spec §8.4, S4) and, later, map files (S6). -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
@@ -40,13 +42,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- "Open with" for GPX files (spec §8.4). Content URIs only (S5). -->
+            <!-- "Open with" for GPX files and Singletrail zips (spec §8.4, §8.5). Content URIs only (S5). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" />
                 <data android:mimeType="application/gpx+xml" />
                 <data android:mimeType="text/xml" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
 
             <!-- Some providers call .gpx files octet-stream: accept those only when the path ends in .gpx.
@@ -72,8 +75,20 @@
                 <data android:mimeType="application/gpx+xml" />
                 <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="text/xml" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
+
+        <!-- Shared GPX, zips and diagnostics (spec §8.5): read-only grants for cache/share/ only. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- The ride (spec §6): started only from the visible app; not exported. -->
         <service

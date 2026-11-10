@@ -186,6 +186,23 @@ class NavigatorTest {
     }
 
     @Test
+    fun `the state carries the latest position`() {
+        val nav = Navigator(line)
+        assertNull(nav.state.position)
+        val p = at(12, 340)
+        val state = nav.onFix(Fix(0, p.lat, p.lon, 40f)).state
+        // Even an inaccurate fix moves the dot: the map shows where the phone thinks it is.
+        assertEquals(LatLon(p.lat, p.lon), state.position)
+    }
+
+    @Test
+    fun `the state reports the smoothed speed`() {
+        val ride = Ride(Navigator(line))
+        ride.ride(0 to 0, 0 to 100, speedMps = 4.0)
+        assertEquals(4.0, ride.state.speedMps, 1e-6)
+    }
+
+    @Test
     fun `ride distance follows the fix speed, not GPS jitter`() {
         val ride = Ride(Navigator(line))
         ride.ride(0 to 0, 0 to 300, noiseM = 4.0)

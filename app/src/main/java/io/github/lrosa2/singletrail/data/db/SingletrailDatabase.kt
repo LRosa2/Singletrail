@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.Flow
 abstract class SingletrailDatabase : RoomDatabase() {
     abstract fun routes(): RouteDao
     abstract fun rides(): RideDao
+    abstract fun watchedFiles(): WatchedFileDao
 
     companion object {
         fun open(context: Context): SingletrailDatabase =
@@ -74,6 +75,19 @@ abstract class RouteDao {
     @Query("UPDATE routes SET name = :name, description = :description, updatedAt = :now WHERE id = :id")
     abstract suspend fun edit(id: String, name: String, description: String?, now: Long)
 
+    @Query("SELECT * FROM routes ORDER BY importedAt")
+    abstract suspend fun all(): List<RouteEntity>
+
+    @Query("SELECT COUNT(*) FROM route_tombstones WHERE geometryHash IN (:hashes)")
+    abstract suspend fun tombstoneCount(hashes: List<String>): Int
+
+    @Query("DELETE FROM route_tombstones WHERE geometryHash IN (:hashes)")
+    abstract suspend fun deleteTombstones(hashes: List<String>)
+
+    /** Stars and dates of a route restored from a backup. */
+    @Query("UPDATE routes SET rating = :rating, importedAt = :importedAt, lastRiddenAt = :lastRiddenAt WHERE id = :id")
+    abstract suspend fun restoreDetails(id: String, rating: Int?, importedAt: Long, lastRiddenAt: Long?)
+
     @Transaction
     open suspend fun insert(route: RouteEntity, waypoints: List<WaypointEntity>) {
         insertRoute(route)
@@ -119,6 +133,19 @@ abstract class RouteDao {
 }
 
 @Dao
+abstract class WatchedFileDao {
+    @Query("SELECT * FROM watched_files WHERE uri = :uri")
+    abstract suspend fun get(uri: String): WatchedFileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun put(file: WatchedFileEntity)
+
+    /** "Show ignored files" (spec §8.4): files skipped because their route was deleted, and broken ones. */
+    @Query("SELECT * FROM watched_files WHERE status != 'IMPORTED' ORDER BY lastSeenAt DESC")
+    abstract fun observeNotImported(): Flow<List<WatchedFileEntity>>
+}
+
+@Dao
 abstract class RideDao {
     @Query("SELECT COUNT(*) FROM rides WHERE routeId = :routeId")
     abstract suspend fun countForRoute(routeId: String): Int
@@ -129,12 +156,34 @@ abstract class RideDao {
     @Query("SELECT * FROM rides WHERE id = :id")
     abstract suspend fun get(id: String): RideEntity?
 
+    @Query("SELECT * FROM rides WHERE id = :id")
+    abstract fun observe(id: String): Flow<RideEntity?>
+
     /** The ride to resume when the app opens (spec §6); there is at most one. */
     @Query("SELECT * FROM rides WHERE status = 'IN_PROGRESS' ORDER BY startedAt DESC LIMIT 1")
     abstract suspend fun inProgress(): RideEntity?
 
     @Query("UPDATE rides SET segmentCount = segmentCount + 1 WHERE id = :id")
     abstract suspend fun addSegment(id: String)
+
+    /** Ride history, newest first; the ride in progress isn't history yet. */
+    @Query("SELECT * FROM rides WHERE status != 'IN_PROGRESS' ORDER BY startedAt DESC")
+    abstract fun observeEnded(): Flow<List<RideEntity>>
+
+    @Query("SELECT * FROM rides WHERE routeId = :routeId AND status != 'IN_PROGRESS' ORDER BY startedAt DESC")
+    abstract fun observeEndedForRoute(routeId: String): Flow<List<RideEntity>>
+
+    @Query("SELECT * FROM rides WHERE status != 'IN_PROGRESS'")
+    abstract suspend fun ended(): List<RideEntity>
+
+    @Query("SELECT * FROM rides WHERE routeId = :routeId AND status != 'IN_PROGRESS'")
+    abstract suspend fun endedForRoute(routeId: String): List<RideEntity>
+
+    @Query("UPDATE rides SET ascentM = :ascentM WHERE id = :id")
+    abstract suspend fun setAscent(id: String, ascentM: Double?)
+
+    @Query("DELETE FROM rides WHERE id = :id")
+    abstract suspend fun delete(id: String)
 
     /** Ends the ride and, when its route still exists, stamps the route as ridden. */
     @Transaction

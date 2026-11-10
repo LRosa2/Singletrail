@@ -23,6 +23,13 @@ class FormatsTest {
     }
 
     @Test
+    fun `durations are hours, minutes and seconds`() {
+        assertEquals("0:00:00", Formats.duration(0.0))
+        assertEquals("0:04:41", Formats.duration(281.6))
+        assertEquals("12:03:09", Formats.duration(12 * 3600 + 3 * 60 + 9.0))
+    }
+
+    @Test
     fun `elevations are whole metres with thousands separators`() {
         assertEquals("1,234 m", Formats.elevation(1234.4))
         assertEquals("-12 m", Formats.elevation(-12.0))

@@ -1,5 +1,6 @@
 package io.github.lrosa2.singletrail.data.routes
 
+import io.github.lrosa2.singletrail.backup.RouteGpx
 import io.github.lrosa2.singletrail.data.db.RouteEntity
 import io.github.lrosa2.singletrail.data.db.RouteTombstoneEntity
 import io.github.lrosa2.singletrail.data.db.SingletrailDatabase
@@ -41,6 +42,25 @@ class RouteRepository(
     fun observeRoute(id: String): Flow<RouteEntity?> = routes.observe(id)
 
     suspend fun route(id: String): RouteEntity? = routes.get(id)
+
+    suspend fun all(): List<RouteEntity> = routes.all()
+
+    suspend fun exists(id: String): Boolean = routes.get(id) != null
+
+    /** Deleted from the watched folder before (D36), stored either way round. */
+    suspend fun isTombstoned(forward: String, reversed: String): Boolean = routes.tombstoneCount(listOf(forward, reversed)) > 0
+
+    suspend fun forgetTombstones(forward: String, reversed: String) = routes.deleteTombstones(listOf(forward, reversed))
+
+    suspend fun restoreDetails(id: String, rating: Int?, importedAt: Long, lastRiddenAt: Long?) =
+        routes.restoreDetails(id, rating, importedAt, lastRiddenAt)
+
+    /** The route as GPX to share or back up, with its current name and description (spec §8.5). */
+    suspend fun sharedGpx(route: RouteEntity): GpxDocument = withContext(io) { sharedGpxBlocking(route) }
+
+    /** [sharedGpx] for code already on an I/O thread. */
+    fun sharedGpxBlocking(route: RouteEntity): GpxDocument =
+        RouteGpx.forSharing(gpxFile(route).inputStream().buffered().use(readGpx), route.name, route.description)
 
     suspend fun waypoints(id: String): List<WaypointEntity> = routes.waypoints(id)
 

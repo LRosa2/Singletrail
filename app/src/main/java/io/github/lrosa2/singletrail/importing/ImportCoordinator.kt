@@ -1,6 +1,10 @@
 package io.github.lrosa2.singletrail.importing
 
+import io.github.lrosa2.singletrail.backup.ArchiveException
+import io.github.lrosa2.singletrail.backup.BackupArchive
+import io.github.lrosa2.singletrail.backup.BackupKind
 import io.github.lrosa2.singletrail.data.routes.routePoints
+import io.github.lrosa2.singletrail.gpx.GpxDocument
 import io.github.lrosa2.singletrail.gpx.GpxParseException
 import io.github.lrosa2.singletrail.gpx.GpxTrack
 import io.github.lrosa2.singletrail.gpx.GpxWaypoint
@@ -19,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicReference
 
@@ -33,23 +38,58 @@ class ImportCoordinator(
     scope: CoroutineScope,
     /** Where parsing results are hashed and prepared; CPU-bound work. */
     private val work: CoroutineDispatcher = Dispatchers.Default,
+    /** Backups and zips of routes; without it a zip is "not GPX". */
+    private val archives: ArchiveSupport? = null,
+    /** The app log (spec §11): file names and outcomes only, never positions. */
+    private val log: (String) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(ImportState())
     val state: StateFlow<ImportState> = _state.asStateFlow()
 
-    private val queue = Channel<ImportRequest>(Channel.UNLIMITED)
+    private sealed interface Work {
+        data class File(val request: ImportRequest) : Work
+        class Job(val name: String, val run: suspend () -> List<ImportResult>) : Work
+    }
+
+    private val queue = Channel<Work>(Channel.UNLIMITED)
     private val pending = AtomicReference<Pair<ImportQuestion, CompletableDeferred<ImportAnswer>>?>(null)
 
     init {
         scope.launch {
-            for (request in queue) process(request)
+            for (work in queue) {
+                when (work) {
+                    is Work.File -> process(work.request)
+                    is Work.Job -> runJob(work)
+                }
+            }
         }
     }
 
     fun enqueue(requests: List<ImportRequest>) {
         if (requests.isEmpty()) return
         _state.update { it.copy(queued = it.queued + requests.size) }
-        requests.forEach { queue.trySend(it) }
+        requests.forEach { queue.trySend(Work.File(it)) }
+    }
+
+    /**
+     * Runs [run] in turn with the files, so nothing else imports at the same time (the watched
+     * folder scan); its results are reported like files'.
+     */
+    fun enqueueJob(name: String, run: suspend () -> List<ImportResult>) {
+        _state.update { it.copy(queued = it.queued + 1) }
+        queue.trySend(Work.Job(name, run))
+    }
+
+    private suspend fun runJob(job: Work.Job) {
+        _state.update { it.copy(working = job.name, queued = it.queued - 1) }
+        val results = try {
+            job.run()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList() // A job reports its own failures; an unexpected one must not stop the queue.
+        }
+        _state.update { it.copy(working = null, results = it.results + results) }
     }
 
     /** Answers the open question; ignored when there is none or [answer] isn't one of its options. */
@@ -67,7 +107,13 @@ class ImportCoordinator(
 
     private suspend fun process(request: ImportRequest) {
         // Named before parsing, so a file that fails is still reported by its own name.
-        val fileName = source.displayName(request) ?: nameFromUri(request.uri)
+        val fileName = try {
+            source.displayName(request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: nameFromUri(request.uri)
         _state.update { it.copy(working = fileName, queued = it.queued - 1) }
         val results = try {
             importFile(request, fileName)
@@ -75,22 +121,89 @@ class ImportCoordinator(
             throw e
         } catch (e: Exception) {
             // Last resort: one broken file must never stop the queue.
+            log("Import of $fileName failed: ${e.javaClass.simpleName}")
             listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.SAVE_FAILED)))
         }
+        results.forEach { log("Import ${request.kind} $fileName: ${it.outcome}") }
         _state.update { it.copy(working = null, results = it.results + results) }
     }
 
     private suspend fun importFile(request: ImportRequest, fileName: String): List<ImportResult> {
-        val doc = try {
+        val loaded = try {
             source.load(request)
         } catch (e: GpxParseException) {
-            return listOf(ImportResult(fileName, null, ImportOutcome.Failed(problemFor(e.reason))))
+            return listOf(ImportResult(fileName, null, ImportOutcome.Failed(importProblemFor(e.reason))))
+        } catch (e: ArchiveException) {
+            return listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.TOO_LARGE)))
+        } catch (e: DownloadException) {
+            val problem = if (e.reason == DownloadException.Reason.TOO_LARGE) ImportProblem.TOO_LARGE else ImportProblem.DOWNLOAD_FAILED
+            return listOf(ImportResult(fileName, null, ImportOutcome.Failed(problem)))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             return listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.UNREADABLE)))
         }
+        return when (loaded) {
+            is LoadedFile.Gpx -> importDocument(request, fileName, loaded.doc)
+            is LoadedFile.Archive -> try {
+                importArchive(request, fileName, loaded.file)
+            } finally {
+                loaded.file.delete()
+            }
+        }
+    }
 
+    private suspend fun importArchive(request: ImportRequest, fileName: String, file: File): List<ImportResult> {
+        fun failed(problem: ImportProblem) = listOf(ImportResult(fileName, null, ImportOutcome.Failed(problem)))
+        val support = archives ?: return failed(ImportProblem.NOT_GPX)
+        val archive = try {
+            withContext(work) { support.open(file) }
+        } catch (e: ArchiveException) {
+            return failed(if (e.reason == ArchiveException.Reason.NOT_A_ZIP) ImportProblem.DAMAGED else ImportProblem.TOO_LARGE)
+        } catch (e: java.io.IOException) {
+            return failed(ImportProblem.DAMAGED)
+        }
+        return archive.use {
+            try {
+                when (archive.kind) {
+                    BackupKind.FULL -> restoreBackup(archive, fileName, support)
+                    BackupKind.ROUTES -> importRoutesZip(archive, request, fileName)
+                }
+            } catch (e: ArchiveException) {
+                failed(if (e.reason == ArchiveException.Reason.ENTRY_TOO_LARGE) ImportProblem.TOO_LARGE else ImportProblem.DAMAGED)
+            }
+        }
+    }
+
+    private suspend fun restoreBackup(archive: BackupArchive, fileName: String, support: ArchiveSupport): List<ImportResult> {
+        val owner = archive.manifest?.owner
+        val fromThisPhone = owner != null && owner == support.ownerId()
+        val question = ImportQuestion.RestoreBackup(fileName, archive.routes().size, archive.rides().size, fromThisPhone)
+        val withRides = when (ask(question)) {
+            ImportAnswer.RESTORE -> true
+            ImportAnswer.ROUTES_ONLY -> false
+            else -> return listOf(ImportResult(fileName, null, ImportOutcome.Skipped))
+        }
+        val summary = support.restorer.restore(archive, withRides)
+        return listOf(ImportResult(fileName, null, ImportOutcome.Restored(summary)))
+    }
+
+    /** Each GPX in a zip is imported like a picked file: no preview each, but still the questions. */
+    private suspend fun importRoutesZip(archive: BackupArchive, request: ImportRequest, fileName: String): List<ImportResult> {
+        val entries = archive.gpxEntries()
+        if (entries.isEmpty()) return listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.NO_TRACK)))
+        return entries.flatMap { entry ->
+            val entryName = entry.substringAfterLast('/')
+            val doc = try {
+                withContext(work) { archive.gpx(entry) }
+            } catch (e: GpxParseException) {
+                return@flatMap listOf(ImportResult(entryName, null, ImportOutcome.Failed(importProblemFor(e.reason))))
+            }
+            importDocument(request.copy(confirm = false), entryName, doc)
+        }
+    }
+
+    private suspend fun importDocument(request: ImportRequest, fileName: String, doc: GpxDocument): List<ImportResult> {
         val baseName = fileName.replace(GPX_SUFFIX, "")
         val tracks = doc.tracks
         if (tracks.isEmpty()) return listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.NO_TRACK)))
@@ -207,16 +320,6 @@ class ImportCoordinator(
                 lastSegment
             }
             return decoded.substringAfterLast('/').substringAfterLast(':')
-        }
-
-        fun problemFor(reason: GpxParseException.Reason) = when (reason) {
-            GpxParseException.Reason.NOT_GPX -> ImportProblem.NOT_GPX
-            GpxParseException.Reason.MALFORMED_XML -> ImportProblem.DAMAGED
-            GpxParseException.Reason.DOCTYPE_NOT_ALLOWED -> ImportProblem.UNSAFE_XML
-            GpxParseException.Reason.FILE_TOO_LARGE -> ImportProblem.TOO_LARGE
-            GpxParseException.Reason.TOO_MANY_POINTS -> ImportProblem.TOO_MANY_POINTS
-            GpxParseException.Reason.TOO_MANY_WAYPOINTS -> ImportProblem.TOO_MANY_WAYPOINTS
-            GpxParseException.Reason.TOO_MANY_TRACKS -> ImportProblem.TOO_MANY_TRACKS
         }
     }
 }

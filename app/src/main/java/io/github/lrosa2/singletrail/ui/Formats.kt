@@ -14,4 +14,10 @@ object Formats {
 
     /** "1,234 m". */
     fun elevation(meters: Double): String = String.format(Locale.US, "%,d m", meters.roundToLong())
+
+    /** Moving time: "0:04:41", "12:03:09" (whole seconds, rounded down). */
+    fun duration(seconds: Double): String {
+        val s = seconds.toLong()
+        return String.format(Locale.US, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+    }
 }

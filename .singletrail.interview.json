@@ -1,0 +1,72 @@
+{
+  "specName": "singletrail",
+  "timestamp": "2026-11-09",
+  "status": "approved",
+  "capturedAtCommit": null,
+  "baseline": {
+    "derivedFrom": "greenfield",
+    "capturedAtCommit": null,
+    "claims": []
+  },
+  "environment": {
+    "workingDir": "E:\\AndroidProj",
+    "projectDir": "E:\\AndroidProj\\Singletrail",
+    "androidStudio": "2026.2 (262.9437.185)",
+    "androidSdk": "C:\\Android\\sdk (platforms: android-34; build-tools: 35.0.0)",
+    "jdk": "Temurin 21.0.12",
+    "git": true,
+    "komootFolder": "APK bundle only (base.apk + splits), not decompiled; not used"
+  },
+  "coverageMap": {
+    "Approach": "done",
+    "Users & Distribution": "done",
+    "Riding UX & Guidance": "done",
+    "Tech Stack": "done",
+    "Navigation Engine": "done",
+    "Offline Maps": "done",
+    "Route Library & Data": "done",
+    "Risks & Constraints": "done"
+  },
+  "qaLog": [
+    {"area": "Approach", "q": "OsmAnd already follows GPX tracks with turn arrows on offline maps. Which approach?", "options": ["Own app on libraries", "Library app + OsmAnd", "Fork OsmAnd"], "answer": "Own app on libraries"},
+    {"area": "Users & Distribution", "q": "Who uses the app and how is it installed?", "options": ["Just me", "Me + a few friends", "Play Store", "F-Droid"], "answer": "Me + friends; write the location justification anyway; maybe F-Droid later, after building it; OsmAnd is heavy, so keep it simpler"},
+    {"area": "Riding UX & Guidance", "q": "Where is the phone while riding?", "options": ["Handlebar, screen on", "Handlebar, wakes at turns", "Pocket", "Varies"], "answer": "Handlebar; screen kept on by default, with a setting to turn it on automatically at turns"},
+    {"area": "Riding UX & Guidance", "q": "Main riding screen layout?", "options": ["Map + turn banner + lost arrow", "Turn banner + map only", "Big arrow, no map", "Swipe between views"], "answer": "Swipe between views"},
+    {"area": "Riding UX & Guidance", "q": "Non-visual alerts?", "options": ["Beep tones", "Voice", "Vibration", "Screen only"], "answer": "Beep tones"},
+    {"area": "Tech Stack", "q": "Language and framework?", "options": ["Kotlin + Compose", ".NET MAUI", "Flutter"], "answer": "Kotlin + Compose"},
+    {"area": "Navigation Engine", "q": "How are turns decided?", "options": ["Shape now, junctions next", "Junctions only from day one", "Shape only forever"], "answer": "Shape now, junctions next"},
+    {"area": "Navigation Engine", "q": "Off-route arrow target?", "options": ["Nearest point ahead", "Where you left the route", "Re-route on trails"], "answer": "Nearest point ahead (later revised by red team: D29)"},
+    {"area": "Navigation Engine", "q": "Ride modes needed?", "options": ["Start from nearest point", "Ride in reverse", "Auto-detect direction", "Go to the start first"], "answer": "Start from nearest point, Ride in reverse, Auto-detect direction"},
+    {"area": "Offline Maps", "q": "First offline map source?", "options": ["OpenAndroMaps", "Freizeitkarte", "swisstopo", "Online maps first"], "answer": "OpenAndroMaps"},
+    {"area": "Route Library & Data", "q": "Route fields beyond name/description/stars?", "options": ["Elevation profile + stats", "Notes, tags, difficulty", "Routes near me", "Ride history"], "answer": "Elevation profile + stats, Routes near me, Ride history"},
+    {"area": "Route Library & Data", "q": "Save the GPS track of each ride?", "options": ["Save track, export as GPX", "Summary only", "Track + Strava upload"], "answer": "Save track, export as GPX"},
+    {"area": "Route Library & Data", "q": "Import sources?", "options": ["Open with / Share to", "File picker in app", "Watched folder", "Download from URL"], "answer": "All four"},
+    {"area": "Route Library & Data", "q": "Backup strategy?", "options": ["Library auto, tracks export", "Everything auto-backed up", "Manual export only"], "answer": "Manual export only"},
+    {"area": "Risks & Constraints", "q": "Test phone?", "options": ["Samsung", "Pixel", "Xiaomi", "Other"], "answer": "Motorola Moto G15"},
+    {"area": "Risks & Constraints", "q": "App / folder name?", "options": ["TrailArrow", "TrackPilot", "Singletrail"], "answer": "Singletrail"},
+    {"area": "Security", "q": "Accept security defaults S1-S6 and run a red team?", "options": ["Accept + red-team", "Accept, skip red-team", "Change a security item"], "answer": "Accept + red-team"},
+    {"area": "Navigation Engine", "q": "[Red team] Return-arrow target after a switchback overshoot?", "options": ["Where you left, then ahead", "Both arrows", "Keep nearest ahead"], "answer": "Where you left, then ahead"},
+    {"area": "Security", "q": "[Red team] Sharing vs backup?", "options": ["Separate share + backup", "One export with checkboxes", "Full export only"], "answer": "Separate share + backup"},
+    {"area": "Riding UX & Guidance", "q": "[Red team] v1 power policy?", "options": ["Dim between turns", "Screen-off mode in v1", "Measure first"], "answer": "Dim between turns"},
+    {"area": "Riding UX & Guidance", "q": "[Red team] Touch handling and unanswered prompts?", "options": ["Ride lock + auto-accept", "Lock, prompt waits", "No lock, auto-switch"], "answer": "Ride lock + auto-accept"}
+  ],
+  "driftLedger": [],
+  "previewUrl": "https://claude.ai/artifact/KDQH5ijcGCdsEFqwUQtsbx",
+  "sourceIssue": null,
+  "feedbackRounds": [],
+  "redTeamStatus": "completed",
+  "redTeamFindings": [
+    {"n": 1, "dimension": "Failure Modes", "severity": "critical", "title": "No resume after crash/process death/reboot; location FGS cannot self-restart from background", "resolution": "Adopted recommended (D28)", "decidedBy": "Claude default, user informed"},
+    {"n": 2, "dimension": "Failure Modes", "severity": "major", "title": "Heading source undefined when slow/stopped", "resolution": "Adopted recommended (D30)", "decidedBy": "Claude default, user informed"},
+    {"n": 3, "dimension": "Failure Modes", "severity": "major", "title": "No 'GPS lost' state; Battery Saver can disable GPS with the screen off", "resolution": "Adopted recommended (D31)", "decidedBy": "Claude default, user informed"},
+    {"n": 4, "dimension": "wildcard", "severity": "major", "title": "Beeps can be muted by stream, ringer mode, DND or Bluetooth", "resolution": "Adopted recommended (D32)", "decidedBy": "Claude default, user informed"},
+    {"n": 5, "dimension": "Scaling Cliffs", "severity": "major", "title": "Battery for 6-8 h with the screen on, on an LCD", "resolution": "Dim between turns (D33)", "decidedBy": "User"},
+    {"n": 6, "dimension": "Contradictory Decisions", "severity": "major", "title": "Missed switchback: nearest-ahead arrow points down the slope", "resolution": "Where you left, then ahead (D29, supersedes D13)", "decidedBy": "User"},
+    {"n": 7, "dimension": "wildcard", "severity": "major", "title": "Alert timing undefined; fixed distances fail across speeds", "resolution": "Adopted recommended (D34)", "decidedBy": "Claude default, user informed"},
+    {"n": 8, "dimension": "wildcard", "severity": "major", "title": "Wet screen, gloves and unanswerable reverse prompt", "resolution": "Ride lock + auto-accept (D35)", "decidedBy": "User"},
+    {"n": 9, "dimension": "Data Integrity", "severity": "major", "title": "Content-hash identity: resurrected, duplicated and merged routes", "resolution": "Adopted recommended (D36)", "decidedBy": "Claude default, user informed"},
+    {"n": 10, "dimension": "Security Gaps", "severity": "major", "title": "Full export as the only share path leaks ride history", "resolution": "Separate share + backup (D37)", "decidedBy": "User"},
+    {"n": 11, "dimension": "Operational Concerns", "severity": "major", "title": "Signing keys differ across channels; uninstall wipes data", "resolution": "Adopted recommended (D38)", "decidedBy": "Claude default, user informed"},
+    {"n": 12, "dimension": "Operational Concerns", "severity": "minor", "title": "No crash diagnosis or replayable traces", "resolution": "Adopted recommended (D39)", "decidedBy": "Claude default, user informed"}
+  ]
+}

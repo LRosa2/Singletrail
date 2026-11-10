@@ -1,0 +1,24 @@
+# Gradle / build output
+.gradle/
+.kotlin/
+build/
+/captures
+.externalNativeBuild/
+.cxx/
+
+# Local machine config
+/local.properties
+
+# Android Studio / IntelliJ
+*.iml
+/.idea/
+.DS_Store
+
+# Signing material — never commit (see README "Release signing")
+keystore.properties
+*.jks
+*.keystore
+
+# Debug traces / exported rides that may contain location data
+*.track
+traces/

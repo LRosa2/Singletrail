@@ -1,0 +1,4 @@
+<resources>
+    <!-- API 26-30: no backup at all (data_extraction_rules is unsupported there). -->
+    <bool name="allow_backup">false</bool>
+</resources>

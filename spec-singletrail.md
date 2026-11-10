@@ -162,7 +162,7 @@ class Navigator(route: PreparedRoute, config: NavConfig, mode: RideMode) {
 - Drop consecutive points closer than 1 m.
 - Compute cumulative distance (haversine).
 - Build a segment grid index (~50 m cells) for nearest-segment queries.
-- Smooth elevation (moving window + 5 m hysteresis for ascent/descent).
+- Smooth elevation (60 m moving window + 5 m hysteresis for ascent/descent).
 - Loop flag: start and end less than 50 m apart.
 - Resample a 5 m polyline for turn detection.
 - Limits: more than 200,000 points or a file over 20 MB is rejected. A warning above 50,000 points.
@@ -371,7 +371,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
    - `name`/`desc` → name/description, HTML stripped.
 3. **Multiple tracks:** ask "Import as N routes / Join into one".
 4. **Identify:**
-   - `geometryHash`: SHA-256 of coordinates rounded to 5 decimals, after dropping duplicate points. Also computed for the reversed geometry.
+   - `geometryHash`: SHA-256 of coordinates rounded to 5 decimals, after dropping duplicate points. Also computed for the reversed geometry. Coordinates are rounded to the 7 decimals our GPX writer stores first, so a route keeps its hash through our own export and re-import.
    - **Exact match** → "Already in library" (or "Same route, reversed").
    - **Similar** (simplified geometries within 10 m and lengths within 2%) → "Update existing route (keeps stars and rides, recomputes maneuvers) / Keep both".
    - **Tombstoned** (watched folder only) → skip silently. *Show ignored files* lists these.
@@ -522,7 +522,7 @@ Each is ridden with the debug trace on; the traces become regression fixtures.
 - Testing: JUnit 5 / Kotest assertions, Turbine.
 - No Hilt (manual DI via an `AppContainer`), no Play Services, no chart library.
 
-**Package / applicationId:** open question (§15). Debug builds use the `.debug` suffix.
+**Package / applicationId:** `io.github.lrosa2.singletrail` (D41). Debug builds use the `.debug` suffix.
 
 ### 13.2 Runtime architecture
 ```
@@ -699,12 +699,14 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] First commit; pushed to private GitHub repo `LRosa2/Singletrail`
 
 ### M1 — `:core:gpx`
-- [ ] `XmlPullParser`-based reader (interface so JVM tests use kxml2, Android uses the platform parser)
-- [ ] GPX 1.0/1.1: `trk/trkseg/trkpt`, `rte/rtept`, `wpt`, `name`/`desc` (HTML stripped)
-- [ ] Limits from `GpxLimits` enforced; DTD/external entities off
-- [ ] Multi-track result (caller decides split/join)
-- [ ] GPX writer (routes for sharing, rides for export)
-- [ ] Fixtures: komoot, Garmin, Strava, OsmAnd, Trailforks exports; malformed and malicious files
+- [x] `XmlPullParser`-based reader with an injected parser factory: kxml2 in JVM tests (`compileOnly`), `Xml.newPullParser()` in the app (`androidGpxReader()`), so the APK bundles no XML library
+- [x] GPX 1.0/1.1: `trk/trkseg/trkpt`, `rte/rtept`, `wpt`, `name`/`desc` (HTML stripped via `TextSanitizer`); foreign-namespace and `extensions` content ignored; invalid coordinates skipped and counted
+- [x] Limits from `GpxLimits` enforced (bytes, points, waypoints, tracks); any DOCTYPE rejected before the root element, so no entity is ever expanded
+- [x] Multi-track result (caller decides split/join; `joinedTrack()` for "join")
+- [x] GPX writer (GPX 1.1, routes before tracks, 7-decimal coordinates, illegal XML characters dropped)
+- [x] Fixtures: synthetic files modelled on komoot, Garmin, Strava, OsmAnd and GPX 1.0 trail-site exports; malformed, truncated, non-GPX, XXE and entity-bomb files (49 JVM tests)
+- [x] Same security checks on Android's own parser: 4 instrumented tests pass on the emulator
+- [ ] Add real exports to the fixtures as you collect them (komoot, Strava, Garmin, Trailforks)
 
 ### M2 — Renderer spike (decision gate)
 - [ ] Throwaway spike module or branch: Mapsforge vs VTM 0.31.x
@@ -714,10 +716,11 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [ ] Decision record → resolves Q1, updates D16
 
 ### M3 — `:core:nav` basics
-- [ ] Route preparation: duplicate removal, cumulative distance, loop flag, 5 m resampling
-- [ ] Segment grid index + nearest-segment query
-- [ ] Elevation smoothing + 5 m hysteresis climb/descent
-- [ ] Geometry hash (rounded, both directions) + similarity check (10 m / 2%)
+- [x] Route preparation (`PreparedRoute`): points within 1 m of the last kept one dropped, cumulative distance, loop flag (< 50 m), 5 m resampling, `positionAt(s)`, reversed route
+- [x] Segment grid index (50 m cells) + nearest-segment query; checked against a brute-force scan, continuous across the antimeridian
+- [x] Elevation: gaps filled by distance, 60 m moving average, 5 m hysteresis climb/descent, cumulative climb for "climb left" (`ascentBetween`)
+- [x] Geometry hash (SHA-256, both directions; rounded to GpxWriter's 7 decimals, then 5, so our own export keeps the hash) + similarity check (10 m / 2%, either direction)
+- [x] 52 JVM tests in `:core:nav`; all thresholds in `RoutePrepConfig`
 
 ### M4 — Library & import
 - [ ] Room schema v1 (`routes`, `maneuvers`, `waypoints`, `rides`, `watched_files`, `route_tombstones`, `map_files`), schema export on

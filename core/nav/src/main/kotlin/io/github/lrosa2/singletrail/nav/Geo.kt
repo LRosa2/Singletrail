@@ -19,4 +19,20 @@ object Geo {
             cos(phi1) * cos(phi2) * sin(dLambda / 2).let { it * it }
         return 2 * EARTH_RADIUS_M * asin(sqrt(a.coerceIn(0.0, 1.0)))
     }
+
+    /** Longitude step from [from] to [to] in degrees, wrapped to [-180, 180) so lines across the antimeridian stay short. */
+    fun lonDelta(from: Double, to: Double): Double {
+        val d = (to - from) % 360.0
+        return when {
+            d >= 180.0 -> d - 360.0
+            d < -180.0 -> d + 360.0
+            else -> d
+        }
+    }
+
+    /** [lon] normalised to [-180, 180). */
+    fun normalizeLon(lon: Double): Double = lonDelta(0.0, lon)
 }
+
+internal fun RoutePoint.distanceTo(other: RoutePoint): Double =
+    Geo.distanceMeters(lat, lon, other.lat, other.lon)

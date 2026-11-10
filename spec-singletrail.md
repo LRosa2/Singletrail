@@ -696,7 +696,7 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] `test assembleDebug` green (4 unit tests); app launches on the Pixel 7 API 34 emulator
 - [ ] Launch on the Moto G15 (when connected by USB)
 - [x] git init
-- [x] First commit (local only, no remote)
+- [x] First commit; pushed to private GitHub repo `LRosa2/Singletrail`
 
 ### M1 — `:core:gpx`
 - [ ] `XmlPullParser`-based reader (interface so JVM tests use kxml2, Android uses the platform parser)

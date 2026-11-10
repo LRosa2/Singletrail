@@ -9,6 +9,7 @@
         which is why no fullBackupContent file is needed (lint DataExtractionRules does not see that).
     -->
     <application
+        android:name=".SingletrailApp"
         tools:ignore="DataExtractionRules"
         android:allowBackup="@bool/allow_backup"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -18,12 +19,48 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Singletrail">
 
+        <!-- singleTask: a file opened from another app lands in Singletrail's own task, not the sender's. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- "Open with" for GPX files (spec §8.4). Content URIs only (S5). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="text/xml" />
+            </intent-filter>
+
+            <!-- Some providers call .gpx files octet-stream: accept those only when the path ends in .gpx.
+                 Android's pathPattern stops ".*" at the first dot, hence one pattern per dot count. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:pathPattern=".*\\.gpx" />
+                <data android:pathPattern=".*\\..*\\.gpx" />
+                <data android:pathPattern=".*\\..*\\..*\\.gpx" />
+                <data android:pathPattern=".*\\.GPX" />
+                <data android:pathPattern=".*\\..*\\.GPX" />
+            </intent-filter>
+
+            <!-- Share sheet. The content is parsed and rejected unless it is safe, valid GPX. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="text/xml" />
             </intent-filter>
         </activity>
     </application>

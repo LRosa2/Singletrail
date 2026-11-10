@@ -348,7 +348,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
 - **Schema:** exported (`exportSchema = true`), with tested migrations from v1 on (§12).
 
 ### 8.3 Files
-- `filesDir/routes/<id>.gpx`: normalised copy of the imported GPX, kept for sharing and re-processing.
+- `filesDir/routes/<id>.gpx`: normalised copy of the imported GPX, kept for sharing and re-processing. A route updated from a newer file gets a new file (`<id>-<suffix>.gpx`), so the old copy stays intact until the database points at the new one; `gpxPath` always names the current file.
 - `filesDir/rides/<id>.track`: append-only CSV.
   - One line per fix: `elapsedMs,lat,lon,ele,acc,speed,bearing,segment`.
   - Survives crashes; a partial last line is ignored.
@@ -723,10 +723,14 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] 52 JVM tests in `:core:nav`; all thresholds in `RoutePrepConfig`
 
 ### M4 — Library & import
-- [ ] Room schema v1 (`routes`, `maneuvers`, `waypoints`, `rides`, `watched_files`, `route_tombstones`, `map_files`), schema export on
-- [ ] Single-threaded import queue; picker (multi-select) + share/open-with intent filters
-- [ ] Dedupe / "update existing or keep both" / multi-track prompt
-- [ ] Library list (sort, min-stars filter), route detail, stars, elevation profile (Canvas)
+- [x] Room schema v1 (`routes`, `maneuvers`, `waypoints`, `rides`, `watched_files`, `route_tombstones`, `map_files`), schema export on (`app/schemas/…/1.json`); v1 may still change until the first release to friends
+- [x] Single-threaded import queue (`ImportCoordinator`); picker (multi-select, imports directly) + share/open-with intent filters (preview with *Add to library* first); `content://` only
+- [x] Dedupe / "update existing or keep both" / multi-track prompt (split keeps the waypoints within 500 m of each track)
+- [x] Library list (sort by name, stars, length, last ridden; min-stars filter), route detail (outline, stats, stars, description, edit, delete), elevation profile (Canvas)
+- [x] Verified: 35 JVM tests (import queue, row mapping, sorting, formats), 8 repository tests on the emulator; picker, "open with" from the Files app, update, split, delete and dark mode checked by hand on the Pixel 7 API 34 emulator
+- [ ] "Near me" sort (needs location; M9) and remembering sort/filter across app restarts
+- [ ] Large-file warning above 50,000 points (§5.2) is not shown yet
+- [ ] Check import speed of a 50k-point GPX on the G15 (§10 budget: < 3 s)
 
 ### M5 — Navigation engine
 - [ ] Maneuver detection v1 + switchback grouping, both directions, `algoVersion`

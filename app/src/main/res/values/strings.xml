@@ -1,4 +1,113 @@
 <resources>
     <string name="app_name">Singletrail</string>
-    <string name="home_placeholder">Project set up. The route library arrives in milestone M4.</string>
+
+    <!-- Common -->
+    <string name="action_import">Import</string>
+    <string name="action_back">Back</string>
+    <string name="action_more">More options</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_ok">OK</string>
+    <string name="action_open">Open</string>
+    <string name="action_delete">Delete</string>
+    <string name="climb_value">↑ %1$s</string>
+    <string name="descent_value">↓ %1$s</string>
+    <!-- Quoted so the spaces around the dot survive (resource strings are trimmed). -->
+    <string name="separator">" · "</string>
+
+    <!-- Library -->
+    <string name="library_title">Routes</string>
+    <string name="library_empty_title">No routes yet</string>
+    <string name="library_empty_body">Import GPX files from your phone, or open a GPX file with Singletrail from another app, such as a messenger or the Files app.</string>
+    <string name="library_no_matches">No routes with %1$d or more stars.</string>
+    <string name="action_show_all">Show all routes</string>
+    <string name="sort_label">Sort: %1$s</string>
+    <string name="sort_name">Name</string>
+    <string name="sort_stars">Stars</string>
+    <string name="sort_length">Length</string>
+    <string name="sort_last_ridden">Last ridden</string>
+    <string name="stars_any">Stars: any</string>
+    <string name="stars_min">Stars: %1$d+</string>
+    <string name="stars_option_any">Any</string>
+    <string name="stars_option_min">%1$d or more</string>
+    <string name="route_loop">Loop</string>
+
+    <!-- Route detail -->
+    <string name="action_edit">Edit name and description</string>
+    <string name="detail_distance">Distance</string>
+    <string name="detail_climb">Climb</string>
+    <string name="detail_descent">Descent</string>
+    <string name="detail_highest">Highest</string>
+    <string name="detail_lowest">Lowest</string>
+    <string name="detail_shape">Shape</string>
+    <string name="detail_loop">Loop</string>
+    <string name="detail_point_to_point">Point to point</string>
+    <string name="detail_waypoints">Waypoints</string>
+    <string name="detail_rating">Your rating</string>
+    <string name="detail_rating_hint">Tap a star to rate; tap it again to clear.</string>
+    <string name="detail_profile">Elevation</string>
+    <string name="detail_no_elevation">This file has no elevation data.</string>
+    <string name="detail_description">Description</string>
+    <string name="detail_no_description">No description.</string>
+    <string name="detail_rides">Rides</string>
+    <string name="detail_no_rides">No rides yet.</string>
+    <string name="detail_source">Imported from %1$s on %2$s.</string>
+    <string name="detail_source_no_name">Imported on %1$s.</string>
+    <string name="detail_missing">This route is no longer in your library.</string>
+    <string name="detail_geometry_failed">Couldn\'t read this route\'s stored GPX copy.</string>
+    <string name="detail_outline">Route outline</string>
+    <plurals name="rate_stars">
+        <item quantity="one">Rate %d star</item>
+        <item quantity="other">Rate %d stars</item>
+    </plurals>
+    <plurals name="stars_rated">
+        <item quantity="one">%d star</item>
+        <item quantity="other">%d stars</item>
+    </plurals>
+
+    <!-- Edit and delete -->
+    <string name="edit_title">Edit route</string>
+    <string name="edit_name">Name</string>
+    <string name="edit_description">Description</string>
+    <string name="delete_title">Delete route?</string>
+    <string name="delete_body">“%1$s” and its stored GPX copy will be removed from this phone. This can\'t be undone.</string>
+
+    <!-- Import -->
+    <string name="import_progress">Importing %1$s…</string>
+    <string name="import_add">Add to library</string>
+    <plurals name="import_waypoints">
+        <item quantity="one">%d waypoint</item>
+        <item quantity="other">%d waypoints</item>
+    </plurals>
+    <string name="import_similar_title">Updated version?</string>
+    <string name="import_similar_body">This looks like the same trail as “%1$s” in your library. Update it with this file (its name, description and stars stay), or keep both?</string>
+    <string name="import_update">Update existing</string>
+    <string name="import_keep_both">Keep both</string>
+    <string name="import_multi_title">Several tracks</string>
+    <plurals name="import_multi_body">
+        <item quantity="one">“%1$s” contains %2$d track:</item>
+        <item quantity="other">“%1$s” contains %2$d tracks:</item>
+    </plurals>
+    <plurals name="import_split">
+        <item quantity="one">Import as %d route</item>
+        <item quantity="other">Import as %d routes</item>
+    </plurals>
+    <string name="import_join">Join into one route</string>
+    <string name="import_unnamed_track">Unnamed track</string>
+    <string name="import_done_title">Import</string>
+    <string name="import_added">Added to your library</string>
+    <string name="import_updated">Updated in your library</string>
+    <string name="import_already">Already in your library</string>
+    <string name="import_already_reversed">Already in your library, in the other direction</string>
+    <string name="problem_not_gpx">Not a GPX file</string>
+    <string name="problem_damaged">The file is damaged or incomplete</string>
+    <string name="problem_unsafe_xml">Rejected for safety: the file contains a DOCTYPE</string>
+    <string name="problem_too_large">The file is larger than 20 MB</string>
+    <string name="problem_too_many_points">More than 200,000 points</string>
+    <string name="problem_too_many_waypoints">More than 2,000 waypoints</string>
+    <string name="problem_too_many_tracks">More than 10 tracks</string>
+    <string name="problem_no_track">No track or route in this file</string>
+    <string name="problem_too_short">The track is too short</string>
+    <string name="problem_unreadable">Couldn\'t read the file</string>
+    <string name="problem_save_failed">Couldn\'t save the route</string>
 </resources>

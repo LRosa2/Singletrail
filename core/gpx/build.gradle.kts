@@ -15,6 +15,9 @@ kotlin {
 }
 
 dependencies {
+    // XmlPullParser API only at compile time; Android supplies it at runtime, tests use kxml2.
+    compileOnly(libs.kxml2)
+    testImplementation(libs.kxml2)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

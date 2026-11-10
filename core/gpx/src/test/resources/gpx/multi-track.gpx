@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>Up and down</name></metadata>
+  <trk>
+    <name>Up</name>
+    <trkseg>
+      <trkpt lat="46.0000" lon="7.0000"/>
+      <trkpt lat="46.0010" lon="7.0010"/>
+    </trkseg>
+  </trk>
+  <trk>
+    <name>Down</name>
+    <trkseg>
+      <trkpt lat="46.0020" lon="7.0020"/>
+      <trkpt lat="46.0030" lon="7.0030"/>
+    </trkseg>
+  </trk>
+</gpx>

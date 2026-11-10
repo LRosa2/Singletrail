@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture modelled on a Strava activity export: no metadata name, track named, no milliseconds. -->
+<gpx creator="StravaGPX" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+ <metadata>
+  <time>2026-07-20T06:30:00Z</time>
+ </metadata>
+ <trk>
+  <name>Morning Ride</name>
+  <type>mountainbikeride</type>
+  <trkseg>
+   <trkpt lat="46.6201000" lon="8.0402000">
+    <ele>1034.2</ele>
+    <time>2026-07-20T06:30:00Z</time>
+   </trkpt>
+   <trkpt lat="46.6203000" lon="8.0406000">
+    <ele>1035.0</ele>
+    <time>2026-07-20T06:30:04Z</time>
+   </trkpt>
+   <trkpt lat="46.6206000" lon="8.0411000">
+    <ele>1036.6</ele>
+    <time>2026-07-20T06:30:08Z</time>
+   </trkpt>
+   <trkpt lat="46.6210000" lon="8.0415000">
+    <ele>1038.0</ele>
+    <time>2026-07-20T06:30:12Z</time>
+   </trkpt>
+  </trkseg>
+ </trk>
+</gpx>

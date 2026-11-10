@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<!-- Synthetic fixture modelled on a Garmin Connect activity export: TrackPointExtension data and two segments. -->
+<gpx creator="Garmin Connect" version="1.1"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd"
+  xmlns:ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+  <metadata>
+    <link href="connect.garmin.com">
+      <text>Garmin Connect</text>
+    </link>
+    <time>2026-05-02T13:00:00.000Z</time>
+  </metadata>
+  <trk>
+    <name>Chasseral MTB</name>
+    <type>mountain_biking</type>
+    <trkseg>
+      <trkpt lat="47.1330" lon="7.0590">
+        <ele>1100.0</ele>
+        <time>2026-05-02T13:00:00.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:hr>131</ns3:hr>
+            <ns3:cad>72</ns3:cad>
+            <ns3:ele>9999</ns3:ele>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.1335" lon="7.0601">
+        <ele>1104.0</ele>
+        <time>2026-05-02T13:00:05.000Z</time>
+        <extensions>
+          <ns3:TrackPointExtension>
+            <ns3:hr>134</ns3:hr>
+          </ns3:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="47.1341" lon="7.0612">
+        <ele>1109.0</ele>
+        <time>2026-05-02T13:00:10.000Z</time>
+      </trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="47.1400" lon="7.0700">
+        <ele>1180.0</ele>
+        <time>2026-05-02T13:20:00.000Z</time>
+      </trkpt>
+      <trkpt lat="47.1406" lon="7.0712">
+        <ele>1186.0</ele>
+        <time>2026-05-02T13:20:06.000Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

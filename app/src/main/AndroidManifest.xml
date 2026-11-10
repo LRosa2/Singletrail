@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
         Backup policy (spec D21 / S1): no cloud backup of anything; device-to-device transfer allowed.
         API 31+: data_extraction_rules excludes cloud backup and leaves device transfer on.
-        API 26-30: those rules are not supported, so allow_backup is false there (no backup at all).
+        API 26-30: those rules are not supported, so allow_backup is false there (no backup at all),
+        which is why no fullBackupContent file is needed (lint DataExtractionRules does not see that).
     -->
     <application
+        tools:ignore="DataExtractionRules"
         android:allowBackup="@bool/allow_backup"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"

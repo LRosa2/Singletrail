@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture: GPX 1.0 (name/desc directly under <gpx>), HTML description in CDATA as some trail sites export. -->
+<gpx version="1.0" creator="Trailforks" xmlns="http://www.topografix.com/GPX/1/0">
+  <name>Rote Rinne</name>
+  <desc><![CDATA[<p>Black <b>flow</b> trail.</p><p>Closed&nbsp;in winter.</p>]]></desc>
+  <trk>
+    <name>Rote Rinne</name>
+    <trkseg>
+      <trkpt lat="46.5001" lon="7.9001"><ele>1800</ele></trkpt>
+      <trkpt lat="46.4995" lon="7.9010"><ele>1785</ele></trkpt>
+      <trkpt lat="46.4988" lon="7.9021"><ele>1770</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

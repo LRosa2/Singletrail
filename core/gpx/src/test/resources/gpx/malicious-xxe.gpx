@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Malicious fixture: external entity (XXE) that tries to read a local file into the route name. -->
+<!DOCTYPE gpx [
+  <!ENTITY secret SYSTEM "file:///etc/passwd">
+]>
+<gpx version="1.1" creator="evil" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>&secret;</name></metadata>
+  <trk><trkseg><trkpt lat="46.0" lon="7.0"/></trkseg></trk>
+</gpx>

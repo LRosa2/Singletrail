@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture modelled on the structure of a komoot tour export (GPX 1.1). -->
+<gpx version="1.1" creator="https://www.komoot.de" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Gurnigel loop</name>
+    <author>
+      <link href="https://www.komoot.de">
+        <text>komoot</text>
+        <type>text/html</type>
+      </link>
+    </author>
+  </metadata>
+  <trk>
+    <name>Gurnigel loop</name>
+    <trkseg>
+      <trkpt lat="46.7512" lon="7.4423">
+        <ele>1540.0</ele>
+        <time>2026-06-14T08:00:00.000Z</time>
+      </trkpt>
+      <trkpt lat="46.7518" lon="7.4431">
+        <ele>1544.5</ele>
+        <time>2026-06-14T08:00:10.000Z</time>
+      </trkpt>
+      <trkpt lat="46.7525" lon="7.4440">
+        <ele>1549.2</ele>
+        <time>2026-06-14T08:00:20.000Z</time>
+      </trkpt>
+      <trkpt lat="46.7531" lon="7.4452">
+        <ele>1551.8</ele>
+        <time>2026-06-14T08:00:30.000Z</time>
+      </trkpt>
+      <trkpt lat="46.7536" lon="7.4466">
+        <ele>1550.1</ele>
+        <time>2026-06-14T08:00:40.000Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

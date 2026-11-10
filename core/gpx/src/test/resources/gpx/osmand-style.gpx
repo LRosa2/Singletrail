@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<!-- Synthetic fixture modelled on an OsmAnd export: a planned route (rte/rtept), waypoints and osmand: extensions. -->
+<gpx version="1.1" creator="OsmAnd~ 5.2.4" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net/docs/technical/osmand-file-formats/osmand-gpx" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Weissenstein descent</name>
+    <desc>Planned in OsmAnd</desc>
+  </metadata>
+  <wpt lat="47.2560" lon="7.5120">
+    <ele>1280</ele>
+    <name>Fountain</name>
+    <desc>Drinking water</desc>
+    <sym>Drinking Water</sym>
+    <extensions>
+      <osmand:color>#e044bb</osmand:color>
+      <osmand:icon>amenity_drinking_water</osmand:icon>
+    </extensions>
+  </wpt>
+  <wpt lat="47.2401" lon="7.5003">
+    <name>Steep section</name>
+    <sym>Danger Area</sym>
+  </wpt>
+  <rte>
+    <name>Weissenstein descent</name>
+    <rtept lat="47.2563" lon="7.5124">
+      <ele>1284</ele>
+    </rtept>
+    <rtept lat="47.2510" lon="7.5090">
+      <ele>1210</ele>
+      <extensions>
+        <osmand:turn_type>TL</osmand:turn_type>
+      </extensions>
+    </rtept>
+    <rtept lat="47.2455" lon="7.5041">
+      <ele>1120</ele>
+    </rtept>
+    <rtept lat="47.2399" lon="7.5001">
+      <ele>1015</ele>
+    </rtept>
+  </rte>
+  <extensions>
+    <osmand:show_arrows>true</osmand:show_arrows>
+  </extensions>
+</gpx>

@@ -72,6 +72,28 @@ internal class SegmentIndex(
         return SegmentHit(bestSeg, bestDist, s)
     }
 
+    /** Every segment within [radiusMeters] of the point, by index in route order. */
+    fun within(lat: Double, lon: Double, radiusMeters: Double): IntArray {
+        require(radiusMeters.isFinite() && radiusMeters >= 0) { "radiusMeters must be finite and >= 0" }
+        val cx = floor(x(lon) / cellMeters).toInt()
+        val cy = floor(y(lat) / cellMeters).toInt()
+        val scale = min(1.0, cos(Math.toRadians(lat)) / cosLat0).coerceAtLeast(0.05)
+        val lastRing = ceil(radiusMeters / (cellMeters * scale)).toInt() + 1
+        val found = java.util.TreeSet<Int>()
+        val seen = HashSet<Int>()
+        for (ring in 0..lastRing) {
+            forEachCellOnRing(cx, cy, ring) { key ->
+                val segs = cells[key] ?: return@forEachCellOnRing
+                for (seg in segs) {
+                    if (!seen.add(seg)) continue
+                    val p = LocalPlane.projectOntoSegment(lat, lon, points[seg], points[seg + 1])
+                    if (p.distanceMeters <= radiusMeters) found += seg
+                }
+            }
+        }
+        return found.toIntArray()
+    }
+
     private fun x(lon: Double) = Geo.lonDelta(lon0, lon) * kx
     private fun y(lat: Double) = (lat - lat0) * LocalPlane.METERS_PER_DEGREE
 

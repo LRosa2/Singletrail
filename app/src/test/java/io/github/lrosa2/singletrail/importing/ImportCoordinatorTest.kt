@@ -11,6 +11,7 @@ import io.github.lrosa2.singletrail.nav.PreparedRoute
 import io.github.lrosa2.singletrail.track
 import io.github.lrosa2.singletrail.waypointAt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.io.IOException
 
+@OptIn(ExperimentalCoroutinesApi::class) // advanceUntilIdle
 class ImportCoordinatorTest {
 
     private class FakeLibrary : RouteLibrary {

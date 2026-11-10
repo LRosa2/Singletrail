@@ -172,7 +172,7 @@ class Navigator(route: PreparedRoute, config: NavConfig, mode: RideMode) {
 - **Corner vs curve:** a candidate needs |Δ| ≥ 40° accumulated within ≤ 25 m. This separates corners from long sweeping curves.
 - Non-maximum suppression within 30 m.
 - **Classes:** slight 40–60° (icon only, no beep by default), turn 60–120°, sharp 120–165°, U-turn > 165°.
-- **Switchback grouping:** three or more sharp/U-turns alternating sides within ≤ 250 m along the route become one maneuver, "Switchbacks ×N". It gets one *approaching* alert and no *now* alerts.
+- **Switchback grouping:** three or more sharp/U-turns alternating sides within ≤ 250 m along the route (first to last) become one maneuver, "Switchbacks ×N". A longer stack becomes several groups. Each group gets one *approaching* alert and no *now* alerts.
 - **Storage:** computed for both forward and reverse directions and stored with an `algoVersion`. Recomputed when the algorithm version changes, and (v2) when maps covering the route are installed.
 - All thresholds live in `NavConfig` and are tuned with replayed rides.
 
@@ -203,7 +203,7 @@ ON_ROUTE ─consistent backwards ≥100 m─▶ REVERSE_PENDING ─10 s / accept
 any ─no fix ≥10 s─▶ NO_GPS (overlay; previous state kept) ─fix─▶ previous state
 ON_ROUTE ─within 30 m of finish after ≥90% progress─▶ FINISHED
 ```
-`T` is the off-route threshold: 30 m by default, configurable from 15 to 80 m.
+`T` is the off-route threshold: 30 m by default, configurable from 15 to 80 m. Going off route needs both: at least 3 good fixes in a row beyond `T`, spanning at least 5 s. A loop (including an out-and-back whose ends are within 50 m) is rotated at the first match to start at that point, so it finishes there after one lap.
 
 ### 5.7 Off-route return target (revised by red team)
 - **Short detour** (less than 300 m ridden off-route):
@@ -211,6 +211,7 @@ ON_ROUTE ─within 30 m of finish after ≥90% progress─▶ FINISHED
   - Switch to a target ahead (`s > s_exit`) only if it is ≥ 50% closer than the exit point **and** the rider's distance to it has been decreasing for about 20 s.
 - **Longer detour:** target the nearest route point ahead within a 2 km window.
 - **Switchback rule:** never pick a target, and never jump progress, past a switchback group or turn cluster between `s_exit` and the candidate that hasn't been ridden. This prevents "cut straight down the slope" arrows.
+  - In the engine, every sharp turn and U-turn (grouped or not) is such a barrier. It counts as ridden once progress is 10 m past it with the rider's course along the route there. Until then matching reaches at most 20 m past it, and targets stop at it.
 - **Rejoining:** when back on the route at `s_rejoin > s_exit`, the section in between is marked as skipped and its maneuvers are dropped.
 - **Map view:** the route line is always shown, because the arrow is a straight line and may cross terrain.
 
@@ -733,14 +734,19 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [ ] Check import speed of a 50k-point GPX on the G15 (§10 budget: < 3 s)
 
 ### M5 — Navigation engine
-- [ ] Maneuver detection v1 + switchback grouping, both directions, `algoVersion`
-- [ ] Progress-aware matcher with accuracy gate
-- [ ] State machine (waiting, acquiring, on/off route, reverse pending, no GPS, finished)
-- [ ] Return-target logic (D29) incl. switchback rule
-- [ ] Ride modes: nearest-point start, reversed, auto-detect reverse
-- [ ] Heading fusion interface (D30), speed-adaptive alert timing (D34)
-- [ ] Checkpoint/restore; JSONL trace format + replay harness
-- [ ] Tests: switchback overshoot, out-and-back, figure-8, alert timing at 5/20/45 km/h
+- [x] Maneuver detection v1 (`ManeuverDetector`, `MANEUVER_ALGO_VERSION = 1`): 20 m arms, 40° threshold, each turn measured from the straight before to the straight after; classes; same-direction merge within 30 m; switchback groups (≥ 3 alternating sharp/U-turns, first to last ≤ 250 m; longer stacks split); both directions via `NavRoute`
+- [x] Progress-aware matcher: window [s − 150 m, s + max(400 m, 60 s × v)], score = distance + heading penalty + jump penalty, 30 m jitter back, accuracy gate 25 m; loops are rotated to start at the join point and matched across the start
+- [x] State machine: waiting, acquiring (arrow to nearest point), on route, off route (3 fixes and 5 s beyond T; back after 2 fixes within T − 10 m heading along the route), reverse pending, no GPS (overlay after 10 s), finished
+- [x] Return target (D29): exit point for short detours, a point ahead only when ≤ 50% as far and approached for 20 s, nearest point ahead within 2 km after 300 m off route; never past an unridden sharp turn/hairpin; skipped sections recorded and their turns dropped
+- [x] Ride modes: nearest-point start (loops finish at the join point), reversed start, auto-detect reverse with 10 s auto-accept, accept/undo, 500 m undo suppression
+- [x] Heading (D30): GPS course ≥ 6 km/h with bearing accuracy ≤ 30°, else compass, else last heading greyed; "compass off" setting; arrow angle; look-ahead 30–60 m
+- [x] Alerts (D34): approaching at max(80 m, 12 s × v), now at max(15 m, 3 s × v), 5 s smoothed speed, extrapolated by fix age and between fixes on ticks; once per maneuver; none off route, with poor GPS or lost GPS; slight bends silent by default; switchbacks approaching only
+- [x] `NavCheckpoint` (JSON) + `Navigator.restore`: first fix after a restore finds the rider anywhere on the route; JSONL trace (`TraceRecord`, `TraceRecorder`, `NavTrace.replay`)
+- [x] Tests: 86 new JVM tests in `:core:nav` (139 total) incl. switchback overshoot and cut-across, out-and-back and figure-8 with GPS noise, alert timing at 5/20/45 km/h and fix age, reverse on a loop, checkpoint round trips, trace replay; mutation-checked: removing the hairpin cap, the target rule or the heading penalty each fails a test
+- [x] Per fix 0.02 ms on a desktop JVM, the same for 5 km and 100 km routes; preparing a 50k-point route in both directions 0.11 s
+- [ ] Time the engine on the G15 (§10 budget: < 5 ms per fix)
+- [ ] Decide in M6 whether maneuvers are stored in Room at import (`maneuvers` table, `turnsAlgoVersion`) or computed at ride start (fast enough on the desktop; loops are re-detected after rotation anyway)
+- [ ] Real ride traces as replay fixtures (M10)
 
 ### M6 — Ride service
 - [ ] Location foreground service started from the activity; GPS 1 Hz + GnssStatus

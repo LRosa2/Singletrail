@@ -1,8 +1,12 @@
 package io.github.lrosa2.singletrail.nav
 
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.sin
 
 /** Test routes are drawn in metres on a small plane around 46.5° N 7° E (Bernese Oberland). */
 internal object Plane {
@@ -14,6 +18,47 @@ internal object Plane {
     fun lat(y: Double) = LAT0 + y / M_PER_DEG_LAT
     fun lon(x: Double) = LON0 + x / M_PER_DEG_LON
     fun x(lon: Double) = (lon - LON0) * M_PER_DEG_LON
+    fun y(lat: Double) = (lat - LAT0) * M_PER_DEG_LAT
+}
+
+/**
+ * A corner: [leg] metres north to the corner, then [leg] metres on bearing [angleDeg] (clockwise from
+ * north), so the rider turns right by [angleDeg] (left when negative).
+ */
+internal fun corner(angleDeg: Double, leg: Double = 100.0, step: Double = 10.0): List<RoutePoint> {
+    val a = Math.toRadians(angleDeg)
+    return polyline(listOf(0.0 to 0.0, 0.0 to leg, leg * sin(a) to leg + leg * cos(a)), step)
+}
+
+/**
+ * A switchback stack: a [lead]-metre run north, then [hairpins] square hairpins [width] metres wide
+ * joined by [leg]-metre legs, alternating right and left, then a [lead]-metre run out.
+ */
+internal fun zigzag(hairpins: Int, leg: Double = 40.0, width: Double = 8.0, lead: Double = 60.0): List<RoutePoint> {
+    val corners = arrayListOf(0.0 to -lead)
+    var x = 0.0
+    var top = true
+    repeat(hairpins) {
+        val y = if (top) leg else 0.0
+        corners += x to y
+        x += width
+        corners += x to y
+        top = !top
+    }
+    // After a hairpin at the top the route heads south; after one at the bottom, north. Either way it
+    // ends well over 50 m from the start, so the stack is never mistaken for a loop.
+    corners += x to (if (top) leg + lead else -lead - 60)
+    return polyline(corners, step = 5.0)
+}
+
+/** Points every [step] metres on a circle of radius [r] round ([cx], [cy]), from polar angle [fromDeg] to [toDeg]. */
+internal fun arc(cx: Double, cy: Double, r: Double, fromDeg: Double, toDeg: Double, step: Double = 2.0): List<RoutePoint> {
+    val sweep = Math.toRadians(toDeg - fromDeg)
+    val n = max(1, ceil(abs(sweep) * r / step).toInt())
+    return (0..n).map { k ->
+        val a = Math.toRadians(fromDeg) + sweep * k / n
+        at(cx + r * cos(a), cy + r * sin(a))
+    }
 }
 
 /** A point [x] metres east and [y] metres north of the test origin. */

@@ -12,6 +12,44 @@ class PreparedRouteTest {
     private fun prepare(vararg points: RoutePoint) = PreparedRoute.prepare(points.toList())
 
     @Test
+    fun `a rotated loop starts and finishes where it was joined`() {
+        // Square loop with a 10 m gap between finish and start.
+        val loop = PreparedRoute.prepare(polyline(listOf(0.0 to 0.0, 0.0 to 100.0, 100.0 to 100.0, 100.0 to 0.0, 10.0 to 0.0)))
+        val r = loop.rotatedLoop(150.0)
+        assertEquals(loop.lengthMeters + 10.0, r.lengthMeters, 0.1)
+        assertEquals(50.0, Plane.x(r.points.first().lon), 0.01)
+        assertEquals(100.0, Plane.y(r.points.first().lat), 0.01)
+        assertEquals(r.points.first(), r.points.last())
+        // From the join point: 50 m east, 100 m south, 90 m west, the 10 m gap: the old start is 250 m on.
+        val corner = r.positionAt(250.0)
+        assertEquals(0.0, Plane.x(corner.lon), 0.01)
+        assertEquals(0.0, Plane.y(corner.lat), 0.01)
+    }
+
+    @Test
+    fun `rotating a loop interpolates elevation at the join point`() {
+        val loop = PreparedRoute.prepare(listOf(at(0, 0, 500), at(0, 100, 600), at(100, 100, 600), at(0, 5, 500)))
+        assertEquals(550.0, loop.rotatedLoop(50.0).points.first().elevation!!, 0.01)
+    }
+
+    @Test
+    fun `only loops can be rotated`() {
+        assertThrows<IllegalArgumentException> { prepare(at(0, 0), at(0, 500)).rotatedLoop(10.0) }
+    }
+
+    @Test
+    fun `segments near a point are found in route order`() {
+        // Out and back 6 m apart: both legs are near (3, 50); the far end is not.
+        val r = PreparedRoute.prepare(polyline(listOf(0.0 to 0.0, 0.0 to 100.0, 6.0 to 100.0, 6.0 to 0.0)))
+        val near = r.segmentsNear(Plane.lat(50.0), Plane.lon(3.0), 10.0)
+        assertTrue(near.isNotEmpty())
+        assertEquals(near.sorted(), near.toList())
+        val s = near.map { r.distanceAt(it) }
+        assertTrue(s.any { it < 100 } && s.any { it > 106 }, "both legs: $s")
+        assertTrue(near.all { abs(Plane.y(r.points[it].lat) - 50) <= 13 }, "only nearby segments")
+    }
+
+    @Test
     fun `cumulative distance follows the points`() {
         val r = prepare(at(0, 0), at(100, 0), at(100, 50))
         assertEquals(0.0, r.distanceAt(0))

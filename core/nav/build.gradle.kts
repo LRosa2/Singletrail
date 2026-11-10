@@ -4,6 +4,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 // No Android dependencies, so everything here is unit-testable and replayable on a plain JVM.
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    // Checkpoints and debug traces are JSON (spec §11, D28).
+    alias(libs.plugins.kotlin.serialization)
 }
 
 java {
@@ -16,6 +18,9 @@ kotlin {
 }
 
 dependencies {
+    api(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

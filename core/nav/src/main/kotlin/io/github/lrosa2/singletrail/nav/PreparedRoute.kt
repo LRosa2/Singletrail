@@ -60,6 +60,46 @@ class PreparedRoute private constructor(
     /** The same route ridden from the finish to the start. */
     fun reversed(): PreparedRoute = prepare(points.asReversed(), config)
 
+    /**
+     * The loop ridden once round from [s]: it starts and finishes at that point, and its last
+     * segment closes the gap between the original finish and start. Requires [isLoop].
+     */
+    fun rotatedLoop(s: Double): PreparedRoute {
+        require(isLoop) { "Only a loop can be rotated" }
+        val at = s.coerceIn(0.0, lengthMeters)
+        val start = pointAt(at)
+        val i = segmentAt(at)
+        val out = ArrayList<RoutePoint>(points.size + 2)
+        out += start
+        for (k in i + 1 until points.size) out += points[k]
+        for (k in 0..i) out += points[k]
+        // Keep the closing point: drop what sits too close to it, or preparation would drop it instead.
+        while (out.size > 1 && out.last().distanceTo(start) < config.minPointSpacingMeters) out.removeAt(out.lastIndex)
+        out += start
+        return prepare(out, config)
+    }
+
+    /** The point [s] metres along, with elevation interpolated where both neighbours have it. */
+    internal fun pointAt(s: Double): RoutePoint {
+        val p = positionAt(s)
+        val i = segmentAt(p.s)
+        val a = points[i].elevation
+        val b = points[i + 1].elevation
+        val ele = when {
+            a != null && b != null -> a + (p.s - cumulative[i]) / (cumulative[i + 1] - cumulative[i]) * (b - a)
+            else -> a ?: b
+        }
+        return RoutePoint(p.lat, p.lon, ele)
+    }
+
+    /** Bearing of each segment, degrees clockwise from north. */
+    internal val segmentBearings: DoubleArray by lazy {
+        DoubleArray(points.size - 1) { Geo.bearingDeg(points[it].lat, points[it].lon, points[it + 1].lat, points[it + 1].lon) }
+    }
+
+    /** Indices of the segments that come within [radiusMeters] of the point, in route order. */
+    internal fun segmentsNear(lat: Double, lon: Double, radiusMeters: Double): IntArray = index.within(lat, lon, radiusMeters)
+
     /** Index of the segment that contains distance [s]; the last segment for the finish. */
     internal fun segmentAt(s: Double): Int {
         val found = cumulative.binarySearch(s)

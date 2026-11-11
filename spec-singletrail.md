@@ -55,7 +55,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
   - OpenAndroMaps maps: free for private use. Direct links and bundling are forbidden without written permission. The app only reacts to install links the user taps on the OpenAndroMaps website.
   - OpenAndroMaps `andromaps_*` render themes may be integrated. The Elevate/Elements themes may not be bundled, but the user can load them.
   - Mapsforge/VTM: LGPL-3.0 (with Mapsforge's §4(d)/(e) waiver). Compatible with any app licence.
-- **App code licence:** open (see §15). It must be decided before any F-Droid submission.
+- **App code licence:** GPL-3.0 (D45). The bundled theme files (`app/src/main/assets/theme/`) stay under OpenAndroMaps' terms; their author asks for a short notice from apps that integrate them.
 
 ---
 
@@ -618,7 +618,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 |---|---|---|
 | ~~Q1~~ | ~~Mapsforge or VTM?~~ → **resolved: VTM** (D16, §12.3) | End of renderer spike (M2) |
 | ~~Q2~~ | ~~applicationId / package name~~ → **resolved: `io.github.lrosa2.singletrail`** (D41) | M0 |
-| Q3 | Licence of the app's code (GPL-3.0 vs Apache-2.0) | Before F-Droid (v2) |
+| ~~Q3~~ | ~~Licence of the app's code (GPL-3.0 vs Apache-2.0)~~ → **resolved: GPL-3.0** (D45) | Before F-Droid (v2) |
 | Q4 | Final engine thresholds (off-route T, accuracy gate, turn angles, switchback window, alert times) | M10 field tuning |
 | Q5 | Ask the author of the Elevate theme for permission to bundle it? (Otherwise the user loads it.) | Optional |
 
@@ -672,6 +672,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D42 | Task tracking | Milestone checklist appended to this spec, kept in git | Simple, offline, versioned with the code | Interview | 2026-11-09 |
 | D43 | compileSdk | `compileSdk 37` (targetSdk stays 36); refines D8 | Compose 1.12.x / current AndroidX refuse to build against 36 (AAR metadata check); targetSdk 36 keeps Android 16 runtime rules and Play compliance | Drift Accepted | 2026-11-09 |
 | D44 | Maneuver storage | Maneuvers are computed when a ride starts (both directions, with the route), not stored at import; the `maneuvers` table stays for v2 junction-aware maneuvers. Refines §5.3 "Storage" | Detection takes ~0.1 s for 100 km on a desktop JVM and 0.2–0.7 s for a 1.7 km route on the emulator (with JIT warm-up); loops are re-detected after rotating to the join point anyway; no stale rows after a route update | Implementation | 2026-11-10 |
+| D45 | Licence and repository | App code under GPL-3.0; the GitHub repository `LRosa2/Singletrail` is public, with commits under the GitHub noreply address; APKs are published as GitHub releases | Open source like its libraries; ready for F-Droid later; no work email in a public history | User | 2026-11-11 |
 
 ---
 
@@ -747,7 +748,7 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] `test assembleDebug` green (4 unit tests); app launches on the Pixel 7 API 34 emulator
 - [x] Launch on the Moto G15 (moto g15 power, Android 15, MediaTek MT6769, 8 GB, 1080×2400 at 60 Hz): cold start 1.6 s release, 2.9 s debug; all 22 device tests pass on it
 - [x] git init
-- [x] First commit; pushed to private GitHub repo `LRosa2/Singletrail`
+- [x] First commit; pushed to private GitHub repo `LRosa2/Singletrail`; public since 2026-11-11 (D45)
 
 ### M1 — `:core:gpx`
 - [x] `XmlPullParser`-based reader with an injected parser factory: kxml2 in JVM tests (`compileOnly`), `Xml.newPullParser()` in the app (`androidGpxReader()`), so the APK bundles no XML library

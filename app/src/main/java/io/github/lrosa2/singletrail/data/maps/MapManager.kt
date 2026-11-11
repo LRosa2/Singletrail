@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -118,6 +120,9 @@ class MapManager(
     private val probe: MapSizeProbe = HeadSizeProbe(),
 ) {
     val maps: Flow<List<MapFileEntity>> = dao.observeAll()
+
+    /** The installed map files, for the ride map (combined, spec §7.4). */
+    val mapFiles: Flow<List<File>> = maps.map { list -> list.map(installer::fileOf) }.distinctUntilChanged()
 
     private val _job = MutableStateFlow<MapJob?>(null)
     val job: StateFlow<MapJob?> = _job.asStateFlow()

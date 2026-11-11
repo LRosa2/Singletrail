@@ -89,6 +89,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
 - **Top banner:** next maneuver icon + distance ("↰ 120 m"). If the following maneuver is close, a second line ("then ↱ 40 m").
 - **Map:** heading-up by default (north-up toggle). The route ahead is drawn in route colour and the ridden part greyed. Turn markers and GPX waypoints are shown.
 - **Bottom bar:** distance left, climb left, GPS status, battery.
+- **Switching:** swipe from the arrow view, or tap the page names. On the map every drag moves the map, so the page names switch back.
 
 **Arrow view**
 - One large arrow pointing at a look-ahead point on the route (30–60 m ahead, speed-adaptive), relative to the rider's heading (§5.9).
@@ -299,8 +300,13 @@ OpenAndroMaps V5 Mapsforge `.map` files, per country or region. Example: Switzer
   - High contrast for a sunlit LCD.
   - Trail colour by `mtb:scale` S0–S5; dash pattern by `trail_visibility`.
   - Clear path vs track vs road hierarchy; contour lines.
+  - Bundled in the APK under `assets/theme/`, with only the pattern and symbol files it uses (92 files, 157 KB). It is generated from OpenAndroMaps' `andromaps_mtb.xml` by `tools/theme/make-theme.ps1 -AssetPrefix theme/`.
 - **Elevate theme:** if the user loads it, it is selectable.
-- **Route overlay:** simplified per zoom level. Ridden part grey, route ahead in route colour, maneuver markers, GPX waypoints.
+- **Route overlay:** VTM simplifies it per zoom level.
+  - The route ahead is a translucent magenta band, so the trail's difficulty colour and dashes still show through.
+  - The ridden part is grey, and skipped parts are a thin dark grey line.
+  - Turn markers are white rings, one for each turn of a switchback group; GPX waypoints are teal dots.
+  - A straight line runs from the rider to the target when off route, while acquiring, or with the heading frozen (§5.7, §5.9).
 - **Attribution:** "© OpenStreetMap contributors · OpenAndroMaps" is always visible.
 - **No map installed:** route on a neutral grid background. Navigation works the same.
 
@@ -440,7 +446,7 @@ Crash and app logs never contain coordinates. Debug traces (which do) are separa
 |---|---|
 | Import of a 50k-point GPX | < 3 s, including maneuvers for both directions |
 | Engine per fix | < 5 ms (grid index, windowed matching) |
-| Map during ride | Heading-up with route overlay at 60 fps while the map moves (95% of frames < 25 ms), first full screen < 1.5 s, memory < 150 MB (PSS). The spike measured VTM at 21.5 ms, 0.74 s and 105 MB (§12.3). M8 decides between moving the map smoothly between fixes and redrawing once per fix (D33), based on battery |
+| Map during ride | Heading-up with route overlay at 60 fps while the map moves (95% of frames < 25 ms), first full screen < 1.5 s, memory < 200 MB (PSS) for the whole app. The spike measured VTM alone at 21.5 ms, 0.74 s and 105 MB (§12.3). The app's debug build used 156 MB on the G15 with the map open. M8 moves the map once per fix (D33). Smooth movement between fixes costs about 8%/h with continuous redraws and is still open if 1 s steps feel jumpy on a ride |
 | Battery during ride | Target ≤ 12%/h with the dimming policy (about 8 h; the test phone is a G15 power, about 6,000 mAh by its charge counter). Spike: VTM 8%/h at 50% brightness with the map moving every frame and no dimming; confirmed in field tests |
 | Memory | Bounded tile cache; no full-route object churn per fix |
 | Storage | Map files 0.5–1.5 GB per country; free-space checks before download and unpack |
@@ -756,7 +762,7 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 ### M2 — Renderer spike (decision gate)
 - [x] Throwaway spike module `spike/`, built only with `-Pspike`: one test app in two flavours (Mapsforge, VTM) with the same route, zoom, rider position, theme, overlay and measurements. Both libraries at 0.30.0 from JitPack: since 0.26 neither is published to Maven Central (OSSRH closed), and 0.31.0 fails to build on JitPack. The real app needs a source decision (JitPack, or a source build, which F-Droid will want anyway)
 - [x] OpenAndroMaps Switzerland (V5, 4 Nov 2026, 1.05 GB unpacked); a 35 km loop on the Gantrisch trails (BRouter, hiking profile) ridden at 6 m/s with a fix every second, heading-up, rider 3/4 down the screen, ridden part grey and the rest magenta; *smooth* (map moves and turns every frame between fixes) or *step* (once a second). The app logs first render, frame times every 10 s, memory every minute, battery level, charge counter and current, and a summary
-- [x] Theme draft: `spike/theme/make-theme.ps1` builds `singletrail_mtb.xml` from `andromaps_mtb.xml` (paths wider with a white casing; paths and tracks coloured by `mtb:scale` S0 green, S1 blue, S2 red, S3 black, S4 black/red, S5+ black/orange; path dashes by `trail_visibility`; wider tracks). Both libraries render it the same. Open: andromaps' MTB-route rules test `network=mtb`, but the V5 maps carry `mtbnetwork`, so signposted MTB routes don't show yet
+- [x] Theme draft: `tools/theme/make-theme.ps1` (moved from `spike/theme/` once the app used it) builds `singletrail_mtb.xml` from `andromaps_mtb.xml` (paths wider with a white casing; paths and tracks coloured by `mtb:scale` S0 green, S1 blue, S2 red, S3 black, S4 black/red, S5+ black/orange; path dashes by `trail_visibility`; wider tracks). Both libraries render it the same. Open: andromaps' MTB-route rules test `network=mtb`, but the V5 maps carry `mtbnetwork`, so signposted MTB routes don't show yet
 - [x] Found on the emulator (no GPU, so its frame rates mean nothing): Mapsforge needs every tile under the turned screen, so its frame buffer must be 1.5× the screen diagonal with the rider low, and its tile cache and label store must be sized for a 45° turn (√2 wider), or tiles and labels are evicted and re-rendered forever; its usual two-level cache stalled drawing for ~0.45 s under a lock and lost tiles, so the spike uses memory only. Result: Mapsforge 179 MB (PSS) and 4.1–4.6 s to the first full screen; VTM 39–49 MB and 2.4–3.7 s, labels upright with no extra work
 - [x] Measured on the G15 on 2026-11-11 with `spike/measure.ps1`: smooth mode, 30 min each on battery, screen at 50%. Results are in §12.3. Step mode (one redraw per fix) was not measured
 - [x] Decision record (§12.3) → **VTM**; Q1 resolved, D16 updated
@@ -813,11 +819,30 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Manual import (`.map` or an OpenAndroMaps zip, recognised by content); Maps screen (list with size and map date, *Check for update* opens the region page, delete with confirmation, *Get maps*, attribution); startup check removes maps deleted outside the app (notice) and lists valid `.map` files that appeared, clears interrupted installs
 - [x] Coverage check (§7.5): route detail shows *Map coverage: 100%* or *1.8 km of this route has no installed map* with *Get maps*, from the installed maps' bounding boxes
 - [x] Verified: 35 JVM tests (links, header, installer, coverage); on the emulator a real OpenAndroMaps map (Isle of Man, 4.5 MB) installed from its install link in both spellings, header read from the real v5 file (map date 4 Nov 2026), deleted outside the app → notice, foreign host refused, coverage line on a Swiss route, delete, manual import of the zip through the picker
-- [ ] Singletrail MTB theme; multiple map files combined; map attribution on the map view — needs the renderer (M2)
+- [x] Singletrail MTB theme bundled as app assets (§7.4); every installed map combined in one `MultiMapFileTileSource` (with deduplication for overlapping borders); attribution always on the map view. Verified on the emulator with Switzerland and the Isle of Man installed together, and with no map at all (route on a neutral grid)
 - [ ] Install a big region (Switzerland, ~780 MB) on the G15: download time, unpack time, free-space handling. The app log has the download start and "Map installed: …, unpacked in N s"
 
 ### M8 — Ride UI
-- [ ] Map view (banner, heading-up, route ahead/ridden, markers, bottom bar; back to follow after 10 s): needs M7. Until then the second page is a north-up **route overview** drawn on a Canvas (ridden grey, ahead coloured, skipped part dashed, maneuver dots, rider dot, dashed line to the return target)
+- [x] Map view (VTM, replaces the Canvas route overview). `MapScene` and `RouteCuts` are pure and JVM-tested; the drawing is in `RideMapView`.
+  - **Heading-up:** the rider 3/4 down the screen. **North-up:** the rider in the centre. The choice is remembered in DataStore.
+  - North-up with a frozen heading or no heading.
+  - The rider arrow is drawn over the map while it follows: grey when GPS is lost or the heading is frozen.
+  - **Route:** ahead and ridden parts split per fix, without copying the route's points (spec §10). Turn and waypoint markers.
+  - A line from the rider to an off-route, acquiring or frozen-heading target.
+  - The first fix zooms to 16; after that the rider's pinch zoom is kept. Rotation and tilt gestures are off.
+  - Unlocked: dragging stops following; the map follows again 10 s after the last drag, with *Follow*, or when the lock comes back. There's a *North up* / *Heading up* button.
+  - Before the first fix: the whole route, north-up.
+  - Banner and bottom bar are shared with the arrow view.
+- [x] Verified:
+  - 12 new JVM tests (stretches, camera, target line, turn markers).
+  - On the emulator with OpenAndroMaps Switzerland, simulated rides:
+    - theme, route, turn markers, attribution;
+    - drag → *Follow* → follows again;
+    - north-up and back;
+    - arrow ↔ map pages;
+    - no map installed.
+  - On the G15 (debug build, simulated ride on the 35 km Gantrisch loop): map, route and markers are right; 156 MB PSS.
+  - The release app on the G15 has the Switzerland map, copied in over USB.
 - [x] Arrow view (big arrow from `ArrowLook`: green on route, amber off route, grey with no GPS or a frozen heading; "N" marker in compass mode; "next ↱ in 120 m" / "X to the route" / "Back to the route: X"; satellites while waiting; calibration hint); swipe between the two pages (only when unlocked) or tap the page names; last page remembered (DataStore)
 - [x] All ride states (§4.2) in a high-contrast light theme (`RideTheme`), 30 sp banner coloured by state, status strip (route, simulated, GPS, battery), stats bar, at most two warnings; touch targets ≥ 64 dp
 - [x] Ride lock: locked when the ride screen opens; every touch on the content is swallowed and shows how to unlock; long-press the lock to unlock; locks again 15 s after the last touch; lifts for good at the finish. Stop: long-press, then confirm. Reverse prompt: Undo / Switch now (long-press while locked); volume up = switch, volume down = undo while the app is in front (`PromptKey`); auto-accept after 10 s stays in the engine (M5)

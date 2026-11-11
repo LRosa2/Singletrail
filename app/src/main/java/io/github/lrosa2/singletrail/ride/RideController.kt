@@ -5,7 +5,8 @@ import androidx.core.content.ContextCompat
 import io.github.lrosa2.singletrail.data.rides.RideRepository
 import io.github.lrosa2.singletrail.data.routes.RouteRepository
 import io.github.lrosa2.singletrail.nav.Maneuver
-import io.github.lrosa2.singletrail.nav.RoutePosition
+import io.github.lrosa2.singletrail.nav.PreparedRoute
+import io.github.lrosa2.singletrail.nav.engine.LatLon
 import io.github.lrosa2.singletrail.nav.engine.NavState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,8 +31,10 @@ data class RideUi(
     val routeId: String? = null,
     /** The route's stars, to rate it at the finish (spec §3, journey 5). */
     val rating: Int? = null,
-    /** The course being ridden, thinned, for the route view (the map arrives with M7). */
-    val outline: List<RoutePosition> = emptyList(),
+    /** The course being ridden, for the map; it changes when a loop is joined or the ride reverses. */
+    val course: PreparedRoute? = null,
+    /** The route's GPX waypoints, for the map (spec §4.1). */
+    val waypoints: List<LatLon> = emptyList(),
     /** Low-power mode (spec §4.4): arrow view only, dimmer screen. */
     val lowPower: Boolean = false,
 )

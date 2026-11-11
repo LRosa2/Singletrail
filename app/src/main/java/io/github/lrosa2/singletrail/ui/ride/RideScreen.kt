@@ -67,17 +67,25 @@ import io.github.lrosa2.singletrail.ride.RideUi
 import io.github.lrosa2.singletrail.ride.RideWarning
 import io.github.lrosa2.singletrail.ride.ScreenPolicy
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import java.io.File
 
 private const val RELOCK_MS = 15_000L
 private const val HINT_MS = 3_000L
 
 /**
- * The ride screen (spec §4): the guidance banner, two swipeable views (arrow, and a route overview
- * until the map arrives in M7), the ride lock, dimming between turns and the battery policy.
+ * The ride screen (spec §4): the guidance banner, two swipeable views (arrow and map), the ride
+ * lock, dimming between turns and the battery policy.
  */
 @Composable
-fun RideScreen(controller: RideController, settings: SettingsStore, onClose: () -> Unit) {
+fun RideScreen(
+    controller: RideController,
+    settings: SettingsStore,
+    mapFiles: Flow<List<File>>,
+    log: (String) -> Unit,
+    onClose: () -> Unit,
+) {
     val ui by controller.ride.collectAsStateWithLifecycle()
     val view = LocalView.current
     DisposableEffect(view) {
@@ -89,11 +97,18 @@ fun RideScreen(controller: RideController, settings: SettingsStore, onClose: () 
         LaunchedEffect(Unit) { onClose() }
         return
     }
-    RideTheme { RideContent(current, controller, settings, onClose) }
+    RideTheme { RideContent(current, controller, settings, mapFiles, log, onClose) }
 }
 
 @Composable
-private fun RideContent(ui: RideUi, controller: RideController, settings: SettingsStore, onClose: () -> Unit) {
+private fun RideContent(
+    ui: RideUi,
+    controller: RideController,
+    settings: SettingsStore,
+    mapFiles: Flow<List<File>>,
+    log: (String) -> Unit,
+    onClose: () -> Unit,
+) {
     val rideSettings by settings.settings.collectAsStateWithLifecycle(initialValue = RideSettings())
     val now by produceState(SystemClock.elapsedRealtimeNanos()) {
         while (true) {
@@ -160,7 +175,7 @@ private fun RideContent(ui: RideUi, controller: RideController, settings: Settin
                         onClose()
                     }
                     nav == null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    else -> RideBody(ui, nav, now, settings, controller, locked, battery, rideSettings.lowPowerAt)
+                    else -> RideBody(ui, nav, now, settings, mapFiles, log, controller, locked, battery, rideSettings.lowPowerAt)
                 }
                 // Room for the controls that stay usable while locked.
                 Spacer(Modifier.height(if (nav?.phase == RidePhase.REVERSE_PENDING) 152.dp else 76.dp))
@@ -232,11 +247,15 @@ private fun androidx.compose.foundation.layout.ColumnScope.RideBody(
     nav: NavState,
     now: Long,
     settings: SettingsStore,
+    mapFilesFlow: Flow<List<File>>,
+    log: (String) -> Unit,
     controller: RideController,
     locked: Boolean,
     battery: Battery?,
     lowPowerAt: Int,
 ) {
+    val mapFiles by mapFilesFlow.collectAsStateWithLifecycle(initialValue = null)
+    val northUp by settings.mapNorthUp.collectAsStateWithLifecycle(initialValue = false)
     if (nav.phase == RidePhase.FINISHED) {
         // The finish card takes the banner's place.
         FinishCard(nav, ui.rating, onRate = if (ui.routeId != null) controller::rate else null)
@@ -253,16 +272,23 @@ private fun androidx.compose.foundation.layout.ColumnScope.RideBody(
         val pager = rememberPagerState(initialPage = start.coerceIn(0, pages - 1)) { pages }
         val scope = rememberCoroutineScope()
         LaunchedEffect(pager.currentPage) { if (pages > 1) settings.setRideView(pager.currentPage) }
-        HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), userScrollEnabled = !locked) { page ->
-            if (page == 0) {
-                ArrowView(nav, ui.satellitesInView, Modifier.fillMaxSize())
-            } else {
-                RouteView(nav, ui.outline, ui.maneuvers, Modifier.fillMaxSize())
+        // On the map page every drag moves the map; the page names below switch back to the arrow.
+        HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), userScrollEnabled = !locked && pager.currentPage == 0) { page ->
+            val files = mapFiles
+            when {
+                page == 0 -> ArrowView(nav, ui.satellitesInView, Modifier.fillMaxSize())
+                files == null -> Box(Modifier.fillMaxSize())
+                else -> RideMap(
+                    ui, nav, files, northUp, locked,
+                    onNorthUp = { scope.launch { settings.setMapNorthUp(it) } },
+                    log = log,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
         if (pages > 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                listOf(R.string.ride_view_arrow, R.string.ride_view_route).forEachIndexed { i, label ->
+                listOf(R.string.ride_view_arrow, R.string.ride_view_map).forEachIndexed { i, label ->
                     TextButton(onClick = { scope.launch { pager.animateScrollToPage(i) } }) {
                         Text(
                             stringResource(label),

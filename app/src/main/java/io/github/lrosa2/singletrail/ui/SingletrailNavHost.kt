@@ -184,7 +184,13 @@ fun SingletrailNavHost(container: AppContainer) {
                         )
                     }
                     entry<RideKey> {
-                        RideScreen(container.rideController, container.settings, onClose = { backStack.removeAll { it == RideKey } })
+                        RideScreen(
+                container.rideController,
+                container.settings,
+                container.maps.mapFiles,
+                log = { container.log.log("Map", it) },
+                onClose = { backStack.removeAll { it == RideKey } },
+            )
                     }
                     entry<SettingsKey> {
                         SettingsScreen(

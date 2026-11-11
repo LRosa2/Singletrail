@@ -74,6 +74,13 @@ class SettingsStore(context: Context) {
         data.edit { it[RIDE_VIEW] = page }
     }
 
+    /** The ride map's orientation (spec §4.1): heading-up by default, north-up when chosen. */
+    val mapNorthUp: Flow<Boolean> = data.data.map { it[MAP_NORTH_UP] ?: false }
+
+    suspend fun setMapNorthUp(northUp: Boolean) {
+        data.edit { it[MAP_NORTH_UP] = northUp }
+    }
+
     private fun Preferences.toSettings(): RideSettings {
         val defaults = RideSettings()
         return RideSettings(
@@ -149,6 +156,7 @@ class SettingsStore(context: Context) {
         val DIM_LEVEL = floatPreferencesKey("dim_level")
         val LOW_POWER_AT = intPreferencesKey("low_power_at")
         val RIDE_VIEW = intPreferencesKey("ride_view")
+        val MAP_NORTH_UP = booleanPreferencesKey("map_north_up")
         val WATCHED_FOLDER = stringPreferencesKey("watched_folder")
         val LIBRARY_SORT = stringPreferencesKey("library_sort")
         val LIBRARY_MIN_STARS = intPreferencesKey("library_min_stars")

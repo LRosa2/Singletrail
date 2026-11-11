@@ -21,14 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -40,21 +34,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.lrosa2.singletrail.R
-import io.github.lrosa2.singletrail.nav.Maneuver
-import io.github.lrosa2.singletrail.nav.RoutePosition
 import io.github.lrosa2.singletrail.nav.engine.GpsStatus
 import io.github.lrosa2.singletrail.nav.engine.NavState
 import io.github.lrosa2.singletrail.nav.engine.RidePhase
-import io.github.lrosa2.singletrail.nav.engine.TargetKind
 import io.github.lrosa2.singletrail.ride.ArrowLook
 import io.github.lrosa2.singletrail.ride.ArrowTone
 import io.github.lrosa2.singletrail.ride.RideMessage
 import io.github.lrosa2.singletrail.ride.RideTexts
 import io.github.lrosa2.singletrail.ui.Formats
 import io.github.lrosa2.singletrail.ui.StarRating
-import kotlin.math.cos
-import kotlin.math.max
-import kotlin.math.min
 
 /** Route name, simulated tag, GPS and battery, in one quiet line. */
 @Composable
@@ -159,69 +147,6 @@ private fun BigArrow(degrees: Double, color: Color, modifier: Modifier) {
             close()
         }
         rotate(degrees.toFloat()) { drawPath(path, color) }
-    }
-}
-
-/**
- * Route view, north-up: the route ahead in route colour, the ridden part grey, turns as dots, the
- * rider, and a straight line to the target when off the route. A stand-in for the map view (M7).
- */
-@Composable
-fun RouteView(nav: NavState, outline: List<RoutePosition>, maneuvers: List<Maneuver>, modifier: Modifier = Modifier) {
-    val ahead = MaterialTheme.colorScheme.secondary
-    val ridden = MaterialTheme.colorScheme.outlineVariant
-    val turn = MaterialTheme.colorScheme.onSurface
-    val rider = MaterialTheme.colorScheme.primary
-    val warning = MaterialTheme.colorScheme.tertiary
-    val description = stringResource(R.string.ride_route_view)
-    Canvas(modifier.semantics { contentDescription = description }) {
-        if (outline.size < 2) return@Canvas
-        val pos = nav.position
-        val target = nav.target?.takeIf { it.kind != TargetKind.LOOK_AHEAD }
-        val extra = listOfNotNull(pos?.let { it.lat to it.lon }, target?.let { it.lat to it.lon })
-        val project = projection(outline.map { it.lat to it.lon } + extra, 24.dp.toPx())
-        fun line(points: List<RoutePosition>, color: Color, width: Float, dashed: Boolean = false) {
-            if (points.size < 2) return
-            val path = Path()
-            points.forEachIndexed { i, p -> project(p.lat, p.lon).let { if (i == 0) path.moveTo(it.x, it.y) else path.lineTo(it.x, it.y) } }
-            drawPath(
-                path,
-                color,
-                style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(12f, 12f)) else null),
-            )
-        }
-        val split = outline.indexOfFirst { it.s > nav.progressM }.let { if (it < 0) outline.size else it }
-        line(outline.take(max(1, split + 1)), ridden, 6.dp.toPx())
-        line(outline.drop(max(0, split - 1)), ahead, 6.dp.toPx())
-        nav.skipped.forEach { range -> line(outline.filter { it.s in range.from..range.to }, ridden, 3.dp.toPx(), dashed = true) }
-        maneuvers.filter { it.s > nav.progressM }.forEach { m ->
-            drawCircle(turn, radius = 5.dp.toPx(), center = project(m.lat, m.lon))
-        }
-        if (pos != null) {
-            val at = project(pos.lat, pos.lon)
-            if (target != null) {
-                drawLine(warning, at, project(target.lat, target.lon), strokeWidth = 4.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 12f)))
-            }
-            drawCircle(Color.White, radius = 11.dp.toPx(), center = at)
-            drawCircle(rider, radius = 8.dp.toPx(), center = at)
-        }
-    }
-}
-
-/** Equirectangular projection of lat/lon pairs into the canvas, north up, with [padding]. */
-private fun DrawScope.projection(points: List<Pair<Double, Double>>, padding: Float): (Double, Double) -> Offset {
-    val minLat = points.minOf { it.first }
-    val maxLat = points.maxOf { it.first }
-    val minLon = points.minOf { it.second }
-    val maxLon = points.maxOf { it.second }
-    val k = cos(Math.toRadians((minLat + maxLat) / 2))
-    val w = ((maxLon - minLon) * k).coerceAtLeast(1e-9)
-    val h = (maxLat - minLat).coerceAtLeast(1e-9)
-    val scale = min((size.width - 2 * padding) / w, (size.height - 2 * padding) / h)
-    val offsetX = (size.width - w * scale) / 2
-    val offsetY = (size.height - h * scale) / 2
-    return { lat, lon ->
-        Offset((offsetX + (lon - minLon) * k * scale).toFloat(), (offsetY + (maxLat - lat) * scale).toFloat())
     }
 }
 

@@ -225,7 +225,7 @@
     <string name="ride_failed_no_permission">Singletrail needs precise location to guide you. Allow it, then reopen the app to continue the ride.</string>
     <string name="ride_failed_start">The ride couldn\'t start. Please try again.</string>
     <string name="ride_view_arrow">Arrow</string>
-    <string name="ride_view_route">Route</string>
+    <string name="ride_view_map">Map</string>
     <string name="ride_next_in">next %1$s in %2$s</string>
     <string name="ride_to_route">%1$s to the route</string>
     <string name="ride_back_to_route">Back to the route: %1$s</string>
@@ -247,7 +247,10 @@
     <string name="finish_title">Finished</string>
     <string name="finish_summary">%1$s · %2$s moving</string>
     <string name="finish_rate">Rate this route</string>
-    <string name="ride_route_view">Route overview</string>
+    <string name="ride_map">Map with the route</string>
+    <string name="ride_map_north_up">North up</string>
+    <string name="ride_map_heading_up">Heading up</string>
+    <string name="ride_map_follow">Follow</string>
     <string name="warning_location_off">Location is switched off: turn it on in quick settings.</string>
     <string name="warning_alarm_volume_off">Alarm volume is off: you won\'t hear the beeps.</string>
     <string name="warning_dnd_blocks_alarms">Do Not Disturb is blocking alarms: you won\'t hear the beeps.</string>

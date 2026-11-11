@@ -30,6 +30,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The ABIs the map renderer's native helper is built for (no 32-bit x86).
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     signingConfigs {
@@ -105,6 +107,11 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.room.runtime)
     ksp(libs.androidx.room.compiler)
+    // The map renderer (spec §7.4, D16) and its small native helper for each ABI the app runs on.
+    implementation(libs.vtm.android)
+    listOf("arm64-v8a", "armeabi-v7a", "x86_64").forEach { abi ->
+        runtimeOnly("com.github.mapsforge.vtm:vtm-android:${libs.versions.vtm.get()}:natives-$abi")
+    }
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(platform(libs.junit.bom))

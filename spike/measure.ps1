@@ -40,7 +40,7 @@ function Files([string] $name) { "/sdcard/Android/data/$(Package $name)/files" }
 if ($Setup) {
     if (-not $MapFile -or -not $ThemeDir) { throw '-Setup needs -MapFile (the .map) and -ThemeDir (the OAM theme folder)' }
     $themeOut = Join-Path $ThemeDir 'singletrail_mtb.xml'
-    & (Join-Path $PSScriptRoot 'theme\make-theme.ps1') -Source (Join-Path $ThemeDir 'andromaps_mtb.xml') -Out $themeOut
+    & (Join-Path $root 'tools\theme\make-theme.ps1') -Source (Join-Path $ThemeDir 'andromaps_mtb.xml') -Out $themeOut
     Push-Location $root
     try { & .\gradlew.bat -Pspike :spike:assembleMapsforgeRelease :spike:assembleVtmRelease --console=plain -q; if ($LASTEXITCODE) { throw 'build failed' } }
     finally { Pop-Location }

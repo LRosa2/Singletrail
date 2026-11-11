@@ -49,20 +49,6 @@ class ContentGpxSource(
         }
     }
 
-    /** Peeks at the zip signature "PK\u0003\u0004" and rewinds. */
-    private fun isZip(input: BufferedInputStream): Boolean {
-        input.mark(ZIP_MAGIC.size)
-        val head = ByteArray(ZIP_MAGIC.size)
-        var n = 0
-        while (n < head.size) {
-            val read = input.read(head, n, head.size - n)
-            if (read < 0) break
-            n += read
-        }
-        input.reset()
-        return n == ZIP_MAGIC.size && head.contentEquals(ZIP_MAGIC)
-    }
-
     @Suppress("UsableSpace") // A rough check before a copy into the app's own cache.
     private fun copyToTemp(input: InputStream): File {
         tempDir.mkdirs()
@@ -88,7 +74,6 @@ class ContentGpxSource(
     }
 
     private companion object {
-        val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
         const val MAX_ZIP_BYTES = 2L * 1024 * 1024 * 1024
         const val MIN_FREE_BYTES = 100L * 1024 * 1024
     }

@@ -46,7 +46,7 @@ class AppContainer(context: Context) {
         RoutingGpxSource(
             content = ContentGpxSource(context.contentResolver, gpxReader, File(context.cacheDir, "import")),
             // An app-specific User-Agent (spec S6), so servers can tell who is asking.
-            urls = UrlGpxSource(UrlConnectionFetcher(), { gpxReader.read(it) }, userAgent),
+            urls = UrlGpxSource(UrlConnectionFetcher(), { gpxReader.read(it) }, userAgent, File(context.cacheDir, "import")),
         ),
         routes,
         appScope,

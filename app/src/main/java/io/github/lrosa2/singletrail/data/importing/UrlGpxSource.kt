@@ -8,9 +8,12 @@ import io.github.lrosa2.singletrail.importing.LoadedFile
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.Closeable
+import java.io.File
 import java.io.InputStream
+import java.util.UUID
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URL
@@ -70,7 +73,7 @@ class UrlConnectionFetcher : HttpFetcher {
         connection.connectTimeout = 15_000
         connection.readTimeout = 30_000
         connection.setRequestProperty("User-Agent", userAgent)
-        connection.setRequestProperty("Accept", "application/gpx+xml, application/xml;q=0.9, */*;q=0.5")
+        connection.setRequestProperty("Accept", "application/gpx+xml, application/zip, application/xml;q=0.9, */*;q=0.5")
         val code = connection.responseCode
         if (connection.url.protocol != "https") {
             connection.disconnect()
@@ -81,10 +84,15 @@ class UrlConnectionFetcher : HttpFetcher {
     }
 }
 
+/**
+ * A GPX file, or a zip of routes, from an https link. A zip (for example a route package from a
+ * GitHub release) is saved in [tempDir] and imported by the queue like a picked zip.
+ */
 class UrlGpxSource(
     private val fetcher: HttpFetcher,
     private val readGpx: (InputStream) -> GpxDocument,
     private val userAgent: String,
+    private val tempDir: File,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : GpxSource {
 
@@ -97,10 +105,49 @@ class UrlGpxSource(
             if ((response.contentLength ?: 0) > UrlImport.MAX_BYTES) {
                 throw DownloadException(DownloadException.Reason.TOO_LARGE, "Larger than ${UrlImport.MAX_BYTES} bytes")
             }
-            // The GPX reader stops at 20 MB whatever the server said.
-            LoadedFile.Gpx(readGpx(response.body))
+            val body = BufferedInputStream(response.body)
+            // The GPX reader stops at 20 MB whatever the server said; a zip is cut off at 20 MB too.
+            if (isZip(body)) LoadedFile.Archive(saveZip(body)) else LoadedFile.Gpx(readGpx(body))
         }
     }
+
+    private fun saveZip(input: InputStream): File {
+        tempDir.mkdirs()
+        val file = File(tempDir, "${UUID.randomUUID()}.zip")
+        try {
+            file.outputStream().use { out ->
+                val buffer = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    total += n
+                    if (total > UrlImport.MAX_BYTES) throw DownloadException(DownloadException.Reason.TOO_LARGE, "Larger than ${UrlImport.MAX_BYTES} bytes")
+                    out.write(buffer, 0, n)
+                }
+            }
+        } catch (e: Exception) {
+            file.delete()
+            throw e
+        }
+        return file
+    }
+}
+
+private val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
+
+/** Peeks at the zip signature "PK\u0003\u0004" and rewinds. */
+internal fun isZip(input: BufferedInputStream): Boolean {
+    input.mark(ZIP_MAGIC.size)
+    val head = ByteArray(ZIP_MAGIC.size)
+    var n = 0
+    while (n < head.size) {
+        val read = input.read(head, n, head.size - n)
+        if (read < 0) break
+        n += read
+    }
+    input.reset()
+    return n == ZIP_MAGIC.size && head.contentEquals(ZIP_MAGIC)
 }
 
 /** Sends https links to [urls] and everything else to [content]. */

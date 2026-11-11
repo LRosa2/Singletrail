@@ -20,6 +20,9 @@
     <string name="library_empty_title">No routes yet</string>
     <string name="library_empty_body">Import GPX files from your phone, or open a GPX file with Singletrail from another app, such as a messenger or the Files app.</string>
     <string name="library_no_matches">No routes with %1$d or more stars.</string>
+    <string name="library_no_search_matches">No routes match “%1$s”.</string>
+    <string name="library_search_hint">Search names and descriptions</string>
+    <string name="action_clear_search">Clear search</string>
     <string name="action_show_all">Show all routes</string>
     <string name="sort_label">Sort: %1$s</string>
     <string name="sort_near_me">Near me</string>
@@ -166,9 +169,9 @@
     <string name="problem_download_failed">Couldn\'t download the file</string>
     <string name="action_import_link">Import from link…</string>
     <string name="import_link_title">Import from a link</string>
-    <string name="import_link_body">A direct https:// link to a GPX file (up to 20 MB).</string>
+    <string name="import_link_body">A direct https:// link to a GPX file, or to a zip of GPX files such as a route package (up to 20 MB).</string>
     <string name="import_link_hint">https://…</string>
-    <string name="import_link_invalid">Enter an https:// link to a GPX file.</string>
+    <string name="import_link_invalid">Enter an https:// link to a GPX or zip file.</string>
 
     <!-- Maneuvers -->
     <string name="maneuver_slight_left">Slight left</string>

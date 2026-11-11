@@ -12,7 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
@@ -130,6 +136,7 @@ fun LibraryScreen(
                 !state.loaded -> Unit
                 state.total == 0 -> EmptyLibrary(onImport)
                 else -> {
+                    SearchField(state.query, viewModel::setQuery)
                     FilterRow(
                         state.sort,
                         state.minStars,
@@ -163,7 +170,7 @@ fun LibraryScreen(
                     }
                     state.backupDue?.let { BackupBanner(it, onBackUp) }
                     if (state.routes.isEmpty()) {
-                        NoMatches(state.minStars ?: 0) { viewModel.setMinStars(null) }
+                        NoMatches(state.query, state.minStars ?: 0, viewModel::showAll)
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
@@ -311,14 +318,40 @@ private fun EmptyLibrary(onImport: () -> Unit) {
     }
 }
 
+/** Words in route names and descriptions: case, accents and "ae/oe/ue" don't matter ([searchKey]). */
 @Composable
-private fun NoMatches(minStars: Int, onShowAll: () -> Unit) {
+private fun SearchField(query: String, onQuery: (String) -> Unit) {
+    val focus = LocalFocusManager.current
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQuery,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+        placeholder = { Text(stringResource(R.string.library_search_hint)) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQuery("") }) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_clear_search))
+                }
+            }
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
+    )
+}
+
+@Composable
+private fun NoMatches(query: String, minStars: Int, onShowAll: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(stringResource(R.string.library_no_matches, minStars), style = MaterialTheme.typography.bodyLarge)
+        Text(
+            if (query.isNotBlank()) stringResource(R.string.library_no_search_matches, query.trim()) else stringResource(R.string.library_no_matches, minStars),
+            style = MaterialTheme.typography.bodyLarge,
+        )
         TextButton(onClick = onShowAll) { Text(stringResource(R.string.action_show_all)) }
     }
 }

@@ -325,6 +325,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
 ### 8.1 Screens
 - **Library:**
   - Sort by near me, stars, name, length, last ridden; filter by minimum stars.
+  - Search over names and descriptions. Every word must match; case, accents and the German "ae/oe/ue" spellings don't matter ("hoernli" finds "Hörnli"). Not remembered across restarts.
   - Import button.
   - Banner "Last export 47 days ago".
 - **Route detail:**
@@ -370,7 +371,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
    - Share/"open with": `ACTION_VIEW` / `ACTION_SEND` for `application/gpx+xml`, `application/octet-stream` + `.gpx`, `text/xml`.
    - Picker: `ACTION_OPEN_DOCUMENT`, multi-select.
    - Watched folder: persisted `ACTION_OPEN_DOCUMENT_TREE`, read-only, scanned when the app opens.
-   - URL: `https` only, ≤ 20 MB, must parse as GPX (a zip is not accepted from a link).
+   - URL: `https` only, ≤ 20 MB. GPX, or a zip of GPX files (a **route package**, for example from a GitHub release): the zip is saved and imported like a picked one.
    - Zips (backups and route zips) from the picker, "open with" or the share sheet are detected by their signature (§8.5).
 2. **Parse safely** (§9): GPX 1.0 and 1.1.
    - `trk/trkseg/trkpt` → track; multiple segments are joined in order.
@@ -425,7 +426,7 @@ All items were explicitly accepted during the interview.
 | S1 | Location history (recorded rides) | Stored in app-private storage only. Never uploaded. Cloud backup excluded (device-to-device transfer only). Delete one ride or all rides. Full backup is labelled as containing location history. Sharing routes never includes rides or stars. Debug traces are opt-in, private, and deleted with their ride. |
 | S2 | Untrusted GPX/XML | `XmlPullParser` with `FEATURE_PROCESS_DOCDECL=false`. No DTD and no external entities. Caps: 20 MB file, 200k points, 2,000 waypoints, 10 tracks. Text fields are plain text (HTML stripped) and never shown in a WebView. |
 | S3 | Untrusted zips (maps, backups) | Zip-slip check (canonical path must stay under the target folder). Caps on entry count and total uncompressed size. Free-space check before unpacking. Only expected entry types (`.map`, `.gpx`, `.json`). |
-| S4 | URL import | `https` only, ≤ 20 MB, content must parse as GPX. Never rendered as a web page. |
+| S4 | URL import | `https` only, ≤ 20 MB, content must parse as GPX or be a zip that passes the archive checks. Never rendered as a web page. |
 | S5 | Permissions | Fine location while in use only, no background location. Location is used only during a ride, plus one request for "near me". `POST_NOTIFICATIONS`. Exported components are limited to the launcher activity, the GPX intent filters and the map-link intent filter. |
 | S6 | Upstream servers | Downloads only when the user starts them, one at a time, with an app-specific User-Agent, no hotlinking, and a host allowlist for map links (§7.2). |
 
@@ -865,6 +866,9 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Diagnostics: crash files, exit reasons and import outcomes in the app log (no positions); *Share logs* / *Share logs and traces* zip through the share sheet
 - [x] Verified: 139 app JVM tests (backup zip, restorer, import queue with archives and jobs, watched folder scanner, URL source, ride GPX and climb, reminder, near me, file names, diagnostics zip) and 10 ride repository tests on the emulator; on the emulator: history and detail, GPX export, delete, backup → wipe app data → restore of 2 routes and 3 rides, near me, sharing two routes as a zip, link import errors (404, web page), watched folder scan (4 added, 4 linked, 1 rejected), delete → ignored → import anyway, share logs
 - [ ] Map of route starts (needs the map renderer, M7)
+- [x] Library search (§8.1): names and descriptions; every word must match; case, accents and "ae/oe/ue" ignored. 4 JVM tests
+- [x] *Import from link* accepts a zip of GPX files (a route package), capped at 20 MB while downloading. 2 JVM tests
+- [x] **Route packages**, published as GitHub releases `routes-…`. `tools/routes/schweizmobil/export_routes.py` builds one from SchweizMobil's open MTB data: one GPX per local route and per national/regional stage, with searchable names ("Farner Bike (481) · Uznach loop") and descriptions (places, km, climb, difficulty, cantons, source). First package: eastern Switzerland and Liechtenstein, 51 routes (data of Sept 2026)
 
 ### M10 — Field tuning & release
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures

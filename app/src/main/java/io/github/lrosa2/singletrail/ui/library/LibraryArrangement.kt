@@ -3,6 +3,7 @@ package io.github.lrosa2.singletrail.ui.library
 import io.github.lrosa2.singletrail.data.db.RouteEntity
 import io.github.lrosa2.singletrail.nav.Geo
 import java.text.Collator
+import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.min
 
@@ -17,11 +18,16 @@ private val collator: Collator = Collator.getInstance(Locale.ROOT)
 private val byName = Comparator<RouteEntity> { a, b -> collator.compare(a.name, b.name) }
 
 /**
- * The routes to show: those with at least [minStars] (when set), in [sort] order, ties by name.
- * "Near me" needs [here]; without it the routes stay in name order.
+ * The routes to show: those with at least [minStars] (when set) that match every word of [query]
+ * in their name or description, in [sort] order, ties by name. "Near me" needs [here]; without it
+ * the routes stay in name order.
  */
-fun arrange(routes: List<RouteEntity>, sort: LibrarySort, minStars: Int?, here: Here? = null): List<RouteEntity> {
-    val visible = if (minStars == null) routes else routes.filter { (it.rating ?: 0) >= minStars }
+fun arrange(routes: List<RouteEntity>, sort: LibrarySort, minStars: Int?, here: Here? = null, query: String = ""): List<RouteEntity> {
+    val words = query.split(' ').map(::searchKey).filter { it.isNotBlank() }
+    val visible = routes.filter { route ->
+        (minStars == null || (route.rating ?: 0) >= minStars) &&
+            (words.isEmpty() || searchKey(route.name + " " + route.description.orEmpty()).let { text -> words.all { it in text } })
+    }
     val order = when (sort) {
         LibrarySort.NEAR_ME -> if (here == null) byName else compareBy<RouteEntity> { distanceTo(it, here) }.then(byName)
         LibrarySort.NAME -> byName
@@ -31,6 +37,13 @@ fun arrange(routes: List<RouteEntity>, sort: LibrarySort, minStars: Int?, here: 
     }
     return visible.sortedWith(order)
 }
+
+private val marks = Regex("\\p{Mn}+")
+
+/** Text folded for search: lower case, no accents, and "ae"/"oe"/"ue" as "a"/"o"/"u", so "hoernli" finds "Hörnli". */
+internal fun searchKey(text: String): String =
+    marks.replace(Normalizer.normalize(text.trim().lowercase(Locale.ROOT), Normalizer.Form.NFD), "")
+        .replace("ae", "a").replace("oe", "o").replace("ue", "u")
 
 /** Metres from [here] to the nearer end of the route: rides start from the nearest point anyway (§5.8). */
 fun distanceTo(route: RouteEntity, here: Here): Double = min(

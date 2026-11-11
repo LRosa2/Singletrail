@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.io.TempDir
 import org.kxml2.io.KXmlParser
 import java.io.ByteArrayInputStream
 import java.io.InputStream
@@ -56,8 +57,11 @@ class UrlGpxSourceTest {
         }
     }
 
+    @TempDir
+    lateinit var tempDir: java.io.File
+
     private val reader = GpxReader({ KXmlParser() })
-    private fun source(fetcher: HttpFetcher) = UrlGpxSource(fetcher, { reader.read(it) }, "Singletrail/1.0", Dispatchers.Unconfined)
+    private fun source(fetcher: HttpFetcher) = UrlGpxSource(fetcher, { reader.read(it) }, "Singletrail/1.0", tempDir, Dispatchers.Unconfined)
     private fun request(url: String) = ImportRequest(url, SourceKind.URL, confirm = true)
 
     @Test
@@ -104,5 +108,37 @@ class UrlGpxSourceTest {
     fun `content that is not GPX fails like a file`() = runTest {
         val e = assertThrows<GpxParseException> { source(Fake { ByteArrayInputStream("<html></html>".toByteArray()) }).load(request("https://example.org/a.gpx")) }
         assertEquals(GpxParseException.Reason.NOT_GPX, e.reason)
+    }
+
+    private fun zipOf(vararg entries: Pair<String, ByteArray>): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(out).use { zip ->
+            entries.forEach { (name, bytes) ->
+                zip.putNextEntry(java.util.zip.ZipEntry(name))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
+    @Test
+    fun `a zip link is saved for the import queue, like a picked zip`() = runTest {
+        val bytes = zipOf("a.gpx" to gpx, "b.gpx" to gpx)
+        val loaded = source(Fake { ByteArrayInputStream(bytes) }).load(request("https://example.org/routes.zip")) as LoadedFile.Archive
+        assertEquals(tempDir, loaded.file.parentFile)
+        assertEquals(bytes.toList(), loaded.file.readBytes().toList())
+    }
+
+    @Test
+    fun `a zip that turns out larger than 20 MB is refused and its partial file removed`() = runTest {
+        val head = zipOf("a.gpx" to gpx)
+        val endless = object : InputStream() {
+            var at = 0
+            override fun read(): Int = if (at < head.size) head[at++].toInt() and 0xFF else 0
+        }
+        val e = assertThrows<DownloadException> { source(Fake { endless }).load(request("https://example.org/routes.zip")) }
+        assertEquals(DownloadException.Reason.TOO_LARGE, e.reason)
+        assertEquals(emptyList<java.io.File>(), tempDir.listFiles().orEmpty().toList())
     }
 }

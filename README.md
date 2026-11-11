@@ -16,6 +16,11 @@ APKs are on the [Releases](https://github.com/LRosa2/Singletrail/releases) page 
 Maps: in the app, open *Maps* → *Get maps*, choose a region on the OpenAndroMaps website and tap its
 install link for other apps. Maps are free for private use under OpenAndroMaps' terms.
 
+Routes: [route packages](https://github.com/LRosa2/Singletrail/releases?q=routes&expanded=true) are zips
+of ready-made GPX routes. The first is SchweizMobil's official MTB routes in eastern Switzerland. In
+the app, use *Import from link…* with the zip's download link, or download it and *Import* it. How
+packages are built: [`tools/routes/schweizmobil`](tools/routes/schweizmobil/README.md).
+
 ## Build
 
 Requirements: Android Studio 2026.2.1 or newer (AGP 9.4), JDK 17+, Android SDK platform 36.
@@ -63,4 +68,6 @@ These parts come from others and keep their own terms:
 - The map theme in `app/src/main/assets/theme/` is derived from OpenAndroMaps' `andromaps_mtb`
   theme, which apps may integrate for free ([openandromaps.org/en/license](https://www.openandromaps.org/en/license)).
 - Map data is © OpenStreetMap contributors (ODbL), shown on every map.
+- Route packages built from SchweizMobil data keep its terms (open use, the source must be given):
+  SchweizMobil, Mountainbikeland Schweiz, via opendata.swiss.
 - The map renderer is [VTM](https://github.com/mapsforge/vtm) (LGPL-3.0).

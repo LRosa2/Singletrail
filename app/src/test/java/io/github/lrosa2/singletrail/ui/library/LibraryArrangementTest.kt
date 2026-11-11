@@ -16,6 +16,46 @@ class LibraryArrangementTest {
 
     private fun List<io.github.lrosa2.singletrail.data.db.RouteEntity>.names() = map { it.name }
 
+    private fun described(name: String, description: String?, stars: Int? = null) =
+        template.copy(id = name, name = name, description = description, rating = stars)
+
+    private val swiss = listOf(
+        described("Farner Bike (481) · Uznach loop", "SchweizMobil local MTB route 481. Canton St. Gallen."),
+        described("Hörnli Bike (33), stage 2 · Steg → Wattwil", "SchweizMobil regional MTB route 33. Cantons Zürich, St. Gallen."),
+        described("Chasseral", null),
+    )
+
+    private fun search(query: String, minStars: Int? = null, routes: List<io.github.lrosa2.singletrail.data.db.RouteEntity> = swiss) =
+        arrange(routes, LibrarySort.NAME, minStars, query = query).names()
+
+    @Test
+    fun `search finds words in the name or the description`() {
+        assertEquals(listOf("Farner Bike (481) · Uznach loop"), search("uznach"))
+        assertEquals(listOf("Farner Bike (481) · Uznach loop"), search("481"))
+        assertEquals(listOf("Farner Bike (481) · Uznach loop", "Hörnli Bike (33), stage 2 · Steg → Wattwil"), search("st. gallen"))
+    }
+
+    @Test
+    fun `search ignores case, accents and the German ae-oe-ue spellings`() {
+        val hornli = listOf("Hörnli Bike (33), stage 2 · Steg → Wattwil")
+        assertEquals(hornli, search("hornli"))
+        assertEquals(hornli, search("HOERNLI"))
+        assertEquals(hornli, search("zurich"))
+    }
+
+    @Test
+    fun `every word has to match, in any order`() {
+        assertEquals(listOf("Farner Bike (481) · Uznach loop"), search("  gallen   farner "))
+        assertEquals(emptyList<String>(), search("farner wattwil"))
+    }
+
+    @Test
+    fun `a blank search shows everything, and search works with the star filter`() {
+        assertEquals(3, search("  ").size)
+        val rated = swiss.map { if (it.name.startsWith("Farner")) it.copy(rating = 4) else it }
+        assertEquals(listOf("Farner Bike (481) · Uznach loop"), search("gallen", minStars = 3, routes = rated))
+    }
+
     @Test
     fun `names sort alphabetically regardless of case and accents`() {
         val routes = listOf(route("chasseral"), route("Berg"), route("alp"), route("Älggi"))

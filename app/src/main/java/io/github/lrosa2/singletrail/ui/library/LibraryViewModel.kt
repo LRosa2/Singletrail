@@ -20,6 +20,8 @@ data class LibraryState(
     val routes: List<RouteEntity> = emptyList(),
     val sort: LibrarySort = LibrarySort.NAME,
     val minStars: Int? = null,
+    /** Words to find in names and descriptions; not remembered across restarts. */
+    val query: String = "",
     /** Routes in the library before filtering. */
     val total: Int = 0,
     val loaded: Boolean = false,
@@ -39,6 +41,7 @@ private data class View(
     val here: Here?,
     val selected: Set<String>,
     val location: LocationLookup = LocationLookup.IDLE,
+    val query: String = "",
 )
 
 class LibraryViewModel(
@@ -63,9 +66,10 @@ class LibraryViewModel(
     val state: StateFlow<LibraryState> =
         combine(repository.observeRoutes(), rides.observeRides(), settings.lastBackupAt, view) { routes, rideList, lastBackup, v ->
             LibraryState(
-                routes = arrange(routes, v.sort, v.minStars, v.here),
+                routes = arrange(routes, v.sort, v.minStars, v.here, v.query),
                 sort = v.sort,
                 minStars = v.minStars,
+                query = v.query,
                 total = routes.size,
                 loaded = true,
                 selected = v.selected.intersect(routes.map { it.id }.toSet()),
@@ -82,6 +86,16 @@ class LibraryViewModel(
 
     fun setMinStars(value: Int?) {
         view.update { it.copy(minStars = value) }
+        save()
+    }
+
+    fun setQuery(value: String) {
+        view.update { it.copy(query = value) }
+    }
+
+    /** "Show all routes": no star filter and no search. */
+    fun showAll() {
+        view.update { it.copy(minStars = null, query = "") }
         save()
     }
 

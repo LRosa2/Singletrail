@@ -121,7 +121,11 @@ class ImportCoordinatorTest {
     @AfterEach
     fun stopQueues() = queueScopes.forEach { it.cancel() }
 
-    private fun TestScope.coordinator(): ImportCoordinator {
+    private fun TestScope.coordinator(
+        largeRoutePoints: Int = 50_000,
+        log: (String) -> Unit = {},
+        clock: () -> Long = System::nanoTime,
+    ): ImportCoordinator {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(SupervisorJob() + dispatcher).also { queueScopes += it }
         val archives = ArchiveSupport(
@@ -129,7 +133,7 @@ class ImportCoordinatorTest {
             restorer = BackupRestorer(restoreTarget, dispatcher),
             ownerId = { "me" },
         )
-        return ImportCoordinator(source, library, scope, dispatcher, archives)
+        return ImportCoordinator(source, library, scope, dispatcher, archives, log, largeRoutePoints, clock)
     }
 
     /** A full backup made by [owner] with one route and one ride. */
@@ -182,6 +186,41 @@ class ImportCoordinatorTest {
         assertEquals(SourceKind.PICKER, stored.source)
         assertEquals("Gurnigel.gpx", stored.sourceRef)
         assertEquals(1000.0, stored.prepared.lengthMeters, 1.0)
+    }
+
+    @Test
+    fun `a route with many points comes with a warning, in the preview and in the result`() = runTest {
+        // [east] has 101 points; pretend the warning starts at 50.
+        file("u1", "Big.gpx", doc(track("Big", east)))
+        file("u2", "Small.gpx", doc(track("Small", north)))
+        val c = coordinator(largeRoutePoints = 50)
+        c.enqueue(shared("u1"))
+        advanceUntilIdle()
+
+        val preview = (c.state.value.question as ImportQuestion.ConfirmAdd).preview
+        assertEquals(101, preview.pointCount)
+        assertTrue(preview.large)
+        c.answer(ImportAnswer.ADD)
+        advanceUntilIdle()
+        assertEquals(101, c.state.value.results.single().largePoints)
+
+        val relaxed = coordinator(largeRoutePoints = 500)
+        relaxed.enqueue(picked("u2"))
+        advanceUntilIdle()
+        assertNull(relaxed.state.value.results.single().largePoints)
+    }
+
+    @Test
+    fun `the log says how long each file took`() = runTest {
+        file("u1", "Gurnigel.gpx", doc(track("Gurnigel loop", east)))
+        val lines = ArrayList<String>()
+        var now = 0L
+        val c = coordinator(log = { lines += it }, clock = { now.also { now += 1_250_000_000L } })
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+        val line = lines.single()
+        assertTrue(line.startsWith("Import PICKER Gurnigel.gpx: Added("), line)
+        assertTrue(line.endsWith(" in 1250 ms"), line)
     }
 
     @Test

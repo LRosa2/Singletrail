@@ -2,19 +2,25 @@ package io.github.lrosa2.singletrail.ui.route
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.lrosa2.singletrail.data.db.MapFileEntity
 import io.github.lrosa2.singletrail.data.db.RideEntity
 import io.github.lrosa2.singletrail.data.db.RouteEntity
 import io.github.lrosa2.singletrail.data.db.WaypointEntity
 import io.github.lrosa2.singletrail.data.rides.RideRepository
 import io.github.lrosa2.singletrail.data.routes.RouteRepository
+import io.github.lrosa2.singletrail.maps.MapCoverage
+import io.github.lrosa2.singletrail.maps.area
 import io.github.lrosa2.singletrail.nav.RoutePosition
 import io.github.lrosa2.singletrail.util.thinTo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -42,6 +48,7 @@ sealed interface GeometryLoad {
 class RouteDetailViewModel(
     private val repository: RouteRepository,
     private val rideRepository: RideRepository,
+    maps: Flow<List<MapFileEntity>>,
     private val id: String,
 ) : ViewModel() {
 
@@ -60,6 +67,13 @@ class RouteDetailViewModel(
         .distinctUntilChanged()
         .mapLatest { hash -> if (hash == null) GeometryLoad.Failed else loadGeometry() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GeometryLoad.Loading)
+
+    /** Metres of the route outside every installed map (spec §7.5), or null until the route is loaded. */
+    val uncoveredMeters: StateFlow<Double?> = combine(geometry, maps) { g, installed ->
+        (g as? GeometryLoad.Loaded)?.let { MapCoverage.uncoveredMeters(it.outline, installed.map { m -> m.area }) }
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun setRating(rating: Int?) {
         viewModelScope.launch { repository.setRating(id, rating) }

@@ -39,6 +39,7 @@ import io.github.lrosa2.singletrail.ui.library.LibraryViewModel
 import io.github.lrosa2.singletrail.ui.library.rememberBackupFlow
 import io.github.lrosa2.singletrail.ui.library.rememberLinkImport
 import io.github.lrosa2.singletrail.ui.library.rememberNearMe
+import io.github.lrosa2.singletrail.ui.maps.MapsScreen
 import io.github.lrosa2.singletrail.util.Sharing
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +76,9 @@ data object RidesKey : NavKey
 data object IgnoredFilesKey : NavKey
 
 @Serializable
+data object MapsKey : NavKey
+
+@Serializable
 data class RideDetailKey(val id: String) : NavKey
 
 @Composable
@@ -84,6 +88,7 @@ fun SingletrailNavHost(container: AppContainer) {
     val back: () -> Unit = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
     val openRide: () -> Unit = { if (backStack.lastOrNull() != RideKey) backStack.add(RideKey) }
     val openRideDetail: (String) -> Unit = { id -> if (backStack.lastOrNull() != RideDetailKey(id)) backStack.add(RideDetailKey(id)) }
+    val openMaps: () -> Unit = { if (backStack.lastOrNull() != MapsKey) backStack.add(MapsKey) }
     // Picked files are imported straight away; only shared files get a preview first (spec §3, journey 1).
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         container.importer.enqueue(uris.map { ImportRequest(it.toString(), SourceKind.PICKER, confirm = false) })
@@ -117,6 +122,13 @@ fun SingletrailNavHost(container: AppContainer) {
         if (riding) openRide() else backStack.removeAll { it == RideKey }
     }
 
+    // An install link from the website is confirmed on the maps screen (spec §7.2), unless a ride is on.
+    val mapOffer by container.maps.offer.collectAsStateWithLifecycle()
+    val offered = mapOffer != null
+    LaunchedEffect(offered) {
+        if (offered && !riding) openMaps()
+    }
+
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             NavDisplay(
@@ -140,6 +152,7 @@ fun SingletrailNavHost(container: AppContainer) {
                             menu = listOf(
                                 stringResource(R.string.action_import_link) to importLink,
                                 stringResource(R.string.action_ride_history) to { backStack.add(RidesKey) },
+                                stringResource(R.string.action_maps) to openMaps,
                                 stringResource(R.string.action_back_up) to backUp,
                                 stringResource(R.string.action_settings) to { backStack.add(SettingsKey) },
                             ),
@@ -149,7 +162,7 @@ fun SingletrailNavHost(container: AppContainer) {
                     }
                     entry<RouteKey> { key ->
                         RouteDetailScreen(
-                            viewModel = viewModel { RouteDetailViewModel(container.routes, container.rides, key.id) },
+                            viewModel = viewModel { RouteDetailViewModel(container.routes, container.rides, container.maps.maps, key.id) },
                             onBack = back,
                             onRide = { route, reversed, simulate ->
                                 if (riding) openRide() else startRide(RideRequest(route.id, route.name, reversed, simulate))
@@ -157,6 +170,7 @@ fun SingletrailNavHost(container: AppContainer) {
                             showSimulate = BuildConfig.DEBUG,
                             onOpenRide = openRideDetail,
                             onShare = shareRoute,
+                            onGetMaps = openMaps,
                         )
                     }
                     entry<RidesKey> {
@@ -182,6 +196,9 @@ fun SingletrailNavHost(container: AppContainer) {
                             onChooseFolder = { folderPicker.launch(null) },
                             onShowIgnored = { backStack.add(IgnoredFilesKey) },
                         )
+                    }
+                    entry<MapsKey> {
+                        MapsScreen(container.maps, onBack = back)
                     }
                     entry<IgnoredFilesKey> {
                         IgnoredFilesScreen(container.watchedFolder, onBack = back)

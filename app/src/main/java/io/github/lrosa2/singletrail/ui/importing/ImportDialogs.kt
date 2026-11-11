@@ -150,6 +150,14 @@ private fun Preview(preview: RoutePreview) {
         }
     }
     Text(parts.joinToString(stringResource(R.string.separator)), style = MaterialTheme.typography.bodyLarge)
+    if (preview.large) {
+        // Spec §5.2: very detailed recordings work, but preparing and drawing them is slower.
+        Text(
+            pluralStringResource(R.plurals.import_large, preview.pointCount, preview.pointCount),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.tertiary,
+        )
+    }
     preview.description?.let {
         Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
     }
@@ -229,6 +237,13 @@ private fun ResultsDialog(results: List<ImportResult>, onOpen: (String) -> Unit,
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 },
                             )
+                            result.largePoints?.let { points ->
+                                Text(
+                                    pluralStringResource(R.plurals.import_large, points, points),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
                         }
                         routeIdOf(result.outcome)?.let { id ->
                             TextButton(onClick = { onOpen(id) }) { Text(stringResource(R.string.action_open)) }

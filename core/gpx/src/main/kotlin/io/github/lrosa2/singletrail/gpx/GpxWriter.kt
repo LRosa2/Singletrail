@@ -1,8 +1,5 @@
 package io.github.lrosa2.singletrail.gpx
 
-import java.math.BigDecimal
-import java.math.RoundingMode
-import java.time.Instant
 
 /**
  * Writes GPX 1.1 for sharing routes and exporting rides. Routes (`rte`) come before tracks (`trk`)
@@ -10,6 +7,7 @@ import java.time.Instant
  */
 object GpxWriter {
     private const val GPX_11 = "http://www.topografix.com/GPX/1/1"
+    private val PADS = Array(12) { " ".repeat(it) }
 
     fun write(doc: GpxDocument, out: Appendable, creator: String = "Singletrail") {
         out.append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
@@ -58,17 +56,30 @@ object GpxWriter {
     fun writeToString(doc: GpxDocument, creator: String = "Singletrail"): String =
         buildString { write(doc, this, creator) }
 
+    /** One point, built in a single buffer: routes can have 200,000 of them (spec §5.2). */
     private fun point(out: Appendable, indent: Int, tag: String, p: GpxPoint) {
-        val pad = " ".repeat(indent)
-        out.append(pad).append('<').append(tag).append(latLon(p.lat, p.lon))
+        val line = StringBuilder(128)
+        line.append(PADS[indent]).append('<').append(tag).append(" lat=\"")
+        Decimals.appendPlain(line, p.lat, 7)
+        line.append("\" lon=\"")
+        Decimals.appendPlain(line, p.lon, 7)
+        line.append('"')
         if (p.elevation == null && p.timeEpochMs == null) {
-            out.append("/>\n")
+            out.append(line.append("/>\n"))
             return
         }
-        out.append(">\n")
-        element(out, indent + 2, "ele", p.elevation?.let(::elevation))
-        element(out, indent + 2, "time", p.timeEpochMs?.let { Instant.ofEpochMilli(it).toString() })
-        out.append(pad).append("</").append(tag).append(">\n")
+        line.append(">\n")
+        p.elevation?.let {
+            line.append(PADS[indent + 2]).append("<ele>")
+            Decimals.appendPlain(line, it, 1)
+            line.append("</ele>\n")
+        }
+        p.timeEpochMs?.let {
+            line.append(PADS[indent + 2]).append("<time>")
+            IsoTime.appendInstant(line, it)
+            line.append("</time>\n")
+        }
+        out.append(line.append(PADS[indent]).append("</").append(tag).append(">\n"))
     }
 
     private fun element(out: Appendable, indent: Int, tag: String, value: String?) {
@@ -82,8 +93,7 @@ object GpxWriter {
 
     private fun elevation(value: Double) = decimal(value, 1)
 
-    private fun decimal(value: Double, scale: Int): String =
-        BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+    private fun decimal(value: Double, scale: Int): String = Decimals.plain(value, scale)
 
     /** Escapes markup and drops characters that XML 1.0 cannot contain at all. */
     private fun escape(text: String): String = buildString(text.length) {

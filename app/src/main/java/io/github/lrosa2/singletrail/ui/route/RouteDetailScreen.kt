@@ -67,9 +67,11 @@ fun RouteDetailScreen(
     showSimulate: Boolean,
     onOpenRide: (String) -> Unit,
     onShare: (RouteEntity) -> Unit,
+    onGetMaps: () -> Unit,
 ) {
     val load by viewModel.route.collectAsStateWithLifecycle()
     val geometry by viewModel.geometry.collectAsStateWithLifecycle()
+    val uncovered by viewModel.uncoveredMeters.collectAsStateWithLifecycle()
     val rides by viewModel.rides.collectAsStateWithLifecycle()
     var deleteRides by rememberSaveable { mutableStateOf(false) }
     val route = (load as? RouteLoad.Loaded)?.route
@@ -143,7 +145,7 @@ fun RouteDetailScreen(
                     Modifier.padding(24.dp),
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                is RouteLoad.Loaded -> RouteDetails(current.route, geometry, viewModel::setRating, rides, onOpenRide)
+                is RouteLoad.Loaded -> RouteDetails(current.route, geometry, uncovered, viewModel::setRating, rides, onOpenRide, onGetMaps)
             }
         }
     }
@@ -190,9 +192,11 @@ fun RouteDetailScreen(
 private fun RouteDetails(
     route: RouteEntity,
     geometry: GeometryLoad,
+    uncoveredMeters: Double?,
     onRate: (Int?) -> Unit,
     rides: List<RideEntity>,
     onOpenRide: (String) -> Unit,
+    onGetMaps: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -214,6 +218,8 @@ private fun RouteDetails(
         }
 
         Stats(route, (geometry as? GeometryLoad.Loaded)?.waypoints?.size)
+
+        if (uncoveredMeters != null) Coverage(uncoveredMeters, onGetMaps)
 
         Section(stringResource(R.string.detail_rating)) {
             StarRating(route.rating, onRate)
@@ -282,6 +288,24 @@ private fun Stats(route: RouteEntity, waypointCount: Int?) {
                 }
             }
         }
+    }
+}
+
+/** Spec §7.5: "Map coverage: 100%", or how much of the route has no installed map. */
+@Composable
+private fun Coverage(uncoveredMeters: Double, onGetMaps: () -> Unit) {
+    if (uncoveredMeters < 1) {
+        Text(stringResource(R.string.detail_coverage_full), style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            stringResource(R.string.detail_coverage_missing, Formats.distance(uncoveredMeters)),
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.tertiary,
+        )
+        TextButton(onClick = onGetMaps) { Text(stringResource(R.string.action_get_maps)) }
     }
 }
 

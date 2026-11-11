@@ -5,6 +5,7 @@ import io.github.lrosa2.singletrail.backup.BackupArchive
 import io.github.lrosa2.singletrail.backup.BackupKind
 import io.github.lrosa2.singletrail.data.routes.routePoints
 import io.github.lrosa2.singletrail.gpx.GpxDocument
+import io.github.lrosa2.singletrail.gpx.GpxLimits
 import io.github.lrosa2.singletrail.gpx.GpxParseException
 import io.github.lrosa2.singletrail.gpx.GpxTrack
 import io.github.lrosa2.singletrail.gpx.GpxWaypoint
@@ -42,6 +43,10 @@ class ImportCoordinator(
     private val archives: ArchiveSupport? = null,
     /** The app log (spec §11): file names and outcomes only, never positions. */
     private val log: (String) -> Unit = {},
+    /** Routes with more points than this come with a warning (spec §5.2). */
+    private val largeRoutePoints: Int = GpxLimits.DEFAULT.warnPoints,
+    /** Nanoseconds, for the time each file took in the log (spec §10: < 3 s for 50,000 points). */
+    private val clock: () -> Long = System::nanoTime,
 ) {
     private val _state = MutableStateFlow(ImportState())
     val state: StateFlow<ImportState> = _state.asStateFlow()
@@ -115,6 +120,7 @@ class ImportCoordinator(
             null
         } ?: nameFromUri(request.uri)
         _state.update { it.copy(working = fileName, queued = it.queued - 1) }
+        val started = clock()
         val results = try {
             importFile(request, fileName)
         } catch (e: CancellationException) {
@@ -124,7 +130,9 @@ class ImportCoordinator(
             log("Import of $fileName failed: ${e.javaClass.simpleName}")
             listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.SAVE_FAILED)))
         }
-        results.forEach { log("Import ${request.kind} $fileName: ${it.outcome}") }
+        // Includes any time spent waiting for an answer; a picked single-track file asks nothing.
+        val millis = (clock() - started) / 1_000_000
+        results.forEach { log("Import ${request.kind} $fileName: ${it.outcome} in $millis ms") }
         _state.update { it.copy(working = null, results = it.results + results) }
     }
 
@@ -227,9 +235,14 @@ class ImportCoordinator(
     }
 
     private suspend fun importTrack(request: ImportRequest, fileName: String, c: Candidate): ImportResult {
-        fun result(outcome: ImportOutcome, name: String = c.name) = ImportResult(fileName, name, outcome)
-
         val points = c.track.routePoints()
+        val large = points.size > largeRoutePoints
+        fun result(outcome: ImportOutcome, name: String = c.name) = ImportResult(
+            fileName,
+            name,
+            outcome,
+            largePoints = points.size.takeIf { large && (outcome is ImportOutcome.Added || outcome is ImportOutcome.Updated) },
+        )
         val hashes = withContext(work) { RouteIdentity.hashes(points) }
         library.findByGeometryHash(hashes.forward)?.let {
             return result(ImportOutcome.AlreadyInLibrary(it.id, reversed = false), it.name)
@@ -257,8 +270,8 @@ class ImportCoordinator(
             withContext(work) { RouteIdentity.isSimilar(other, prepared) }
         }
         val answer = when {
-            similar != null -> ask(ImportQuestion.SimilarRoute(fileName, preview(route), similar))
-            request.confirm -> ask(ImportQuestion.ConfirmAdd(fileName, preview(route)))
+            similar != null -> ask(ImportQuestion.SimilarRoute(fileName, preview(route, points.size), similar))
+            request.confirm -> ask(ImportQuestion.ConfirmAdd(fileName, preview(route, points.size)))
             else -> ImportAnswer.ADD
         }
         return try {
@@ -284,7 +297,7 @@ class ImportCoordinator(
         return answer.await()
     }
 
-    private fun preview(route: NewRoute): RoutePreview {
+    private fun preview(route: NewRoute, pointCount: Int): RoutePreview {
         val prepared = route.prepared
         return RoutePreview(
             name = route.name,
@@ -294,6 +307,8 @@ class ImportCoordinator(
             descentM = prepared.elevation?.totalDescent,
             waypointCount = route.waypoints.size,
             outline = prepared.samples.thinTo(OUTLINE_POINTS),
+            pointCount = pointCount,
+            large = pointCount > largeRoutePoints,
         )
     }
 

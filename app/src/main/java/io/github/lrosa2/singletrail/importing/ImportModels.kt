@@ -89,6 +89,10 @@ data class RoutePreview(
     val waypointCount: Int,
     /** A thinned copy of the route's shape for drawing an outline. */
     val outline: List<RoutePosition>,
+    /** Points in the file's track. */
+    val pointCount: Int,
+    /** Above the warning limit (spec §5.2): it may be slow on the phone. */
+    val large: Boolean,
 )
 
 enum class ImportAnswer { ADD, SPLIT, JOIN, UPDATE, KEEP_BOTH, RESTORE, ROUTES_ONLY, CANCEL }
@@ -147,7 +151,13 @@ sealed interface ImportOutcome {
     data class Restored(val summary: RestoreSummary) : ImportOutcome
 }
 
-data class ImportResult(val fileName: String, val routeName: String?, val outcome: ImportOutcome)
+data class ImportResult(
+    val fileName: String,
+    val routeName: String?,
+    val outcome: ImportOutcome,
+    /** The point count of a route added or updated despite being above the warning limit (spec §5.2). */
+    val largePoints: Int? = null,
+)
 
 data class ImportState(
     /** File being imported right now, or null when idle. */

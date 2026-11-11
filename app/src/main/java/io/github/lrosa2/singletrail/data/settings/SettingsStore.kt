@@ -43,6 +43,8 @@ data class RideSettings(
     }
 }
 
+data class PendingMapDownload(val downloadId: Long, val link: String)
+
 private val Context.settingsData by preferencesDataStore(name = "settings")
 
 class SettingsStore(context: Context) {
@@ -114,6 +116,26 @@ class SettingsStore(context: Context) {
         data.edit { it[LAST_BACKUP] = at }
     }
 
+    /** The map download in progress (spec §7.2, one at a time): its DownloadManager id and install link. */
+    suspend fun pendingMapDownload(): PendingMapDownload? {
+        val prefs = data.data.first()
+        val id = prefs[MAP_DOWNLOAD_ID] ?: return null
+        val link = prefs[MAP_DOWNLOAD_LINK] ?: return null
+        return PendingMapDownload(id, link)
+    }
+
+    suspend fun setPendingMapDownload(pending: PendingMapDownload?) {
+        data.edit {
+            if (pending == null) {
+                it.remove(MAP_DOWNLOAD_ID)
+                it.remove(MAP_DOWNLOAD_LINK)
+            } else {
+                it[MAP_DOWNLOAD_ID] = pending.downloadId
+                it[MAP_DOWNLOAD_LINK] = pending.link
+            }
+        }
+    }
+
     /** A random id for this installation, written into full backups so a restore can tell "mine". */
     suspend fun backupOwner(): String {
         data.data.first()[BACKUP_OWNER]?.let { return it }
@@ -132,6 +154,8 @@ class SettingsStore(context: Context) {
         val LIBRARY_MIN_STARS = intPreferencesKey("library_min_stars")
         val LAST_BACKUP = longPreferencesKey("last_backup_at")
         val BACKUP_OWNER = stringPreferencesKey("backup_owner")
+        val MAP_DOWNLOAD_ID = longPreferencesKey("map_download_id")
+        val MAP_DOWNLOAD_LINK = stringPreferencesKey("map_download_link")
         val OFF_ROUTE = intPreferencesKey("off_route_m")
         val BEEP_VOLUME = floatPreferencesKey("beep_volume")
         val COMPASS_OFF = booleanPreferencesKey("compass_off")

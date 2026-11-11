@@ -317,7 +317,7 @@ class RideService : Service() {
             distanceM = state.rideDistanceM,
             movingSeconds = state.movingSeconds,
         )
-        container.log.log(TAG, "Stop ride ${current.ride.id} phase=${state.phase}")
+        container.log.log(TAG, "Stop ride ${current.ride.id} phase=${state.phase}; ${current.session.engineTimes()}")
         running = null
         stopNow(clear = true)
     }

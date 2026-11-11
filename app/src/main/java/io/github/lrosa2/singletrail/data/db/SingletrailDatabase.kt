@@ -29,6 +29,7 @@ abstract class SingletrailDatabase : RoomDatabase() {
     abstract fun routes(): RouteDao
     abstract fun rides(): RideDao
     abstract fun watchedFiles(): WatchedFileDao
+    abstract fun maps(): MapDao
 
     companion object {
         fun open(context: Context): SingletrailDatabase =
@@ -143,6 +144,22 @@ abstract class WatchedFileDao {
     /** "Show ignored files" (spec §8.4): files skipped because their route was deleted, and broken ones. */
     @Query("SELECT * FROM watched_files WHERE status != 'IMPORTED' ORDER BY lastSeenAt DESC")
     abstract fun observeNotImported(): Flow<List<WatchedFileEntity>>
+}
+
+/** Installed offline maps (spec §7.3). */
+@Dao
+abstract class MapDao {
+    @Query("SELECT * FROM map_files ORDER BY displayName COLLATE NOCASE")
+    abstract fun observeAll(): Flow<List<MapFileEntity>>
+
+    @Query("SELECT * FROM map_files")
+    abstract suspend fun all(): List<MapFileEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun put(map: MapFileEntity)
+
+    @Query("DELETE FROM map_files WHERE id = :id")
+    abstract suspend fun remove(id: String)
 }
 
 @Dao

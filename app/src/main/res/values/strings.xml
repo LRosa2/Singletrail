@@ -313,4 +313,56 @@
     <string name="settings_debug_trace_body">Saves every GPS fix and guidance event of each ride on this phone, to tune the guidance. Contains your positions; stays private.</string>
     <string name="settings_battery">Battery optimisation</string>
     <string name="settings_battery_body">For long rides, set Singletrail\'s battery use to Unrestricted in the app\'s settings.</string>
+
+    <plurals name="import_large">
+        <item quantity="one">A very detailed recording (%1$,d point): it may be slow to open and to start a ride with.</item>
+        <item quantity="other">A very detailed recording (%1$,d points): it may be slow to open and to start a ride with.</item>
+    </plurals>
+
+    <!-- Offline maps (spec §7) -->
+    <string name="maps_title">Maps</string>
+    <string name="action_maps">Maps</string>
+    <string name="action_get_maps">Get maps</string>
+    <string name="action_import_map">Import map file</string>
+    <string name="maps_empty">No maps installed yet. Routes are drawn on a plain background until you install the map for their area.</string>
+    <string name="maps_how">“Get maps” opens OpenAndroMaps in your browser. Choose a region and tap its install link for other apps (“Others”). Singletrail asks before it downloads anything.</string>
+    <string name="maps_attribution">Map data © OpenStreetMap contributors · OpenAndroMaps</string>
+    <string name="maps_download_title">%1$s map</string>
+    <string name="maps_item_summary">%1$s · map data from %2$s</string>
+    <string name="action_check_update">Check for update</string>
+    <string name="maps_delete_title">Delete the %1$s map?</string>
+    <string name="maps_delete_body">Routes in this area are then drawn without a map. You can install it again from OpenAndroMaps.</string>
+    <string name="maps_removed">Removed from the list because the file was deleted outside the app: %1$s</string>
+    <string name="maps_downloading">Downloading %1$s: %2$s of %3$s</string>
+    <string name="maps_downloading_unknown">Downloading %1$s: %2$s</string>
+    <string name="maps_waiting_wifi">The %1$s map waits for Wi-Fi.</string>
+    <string name="maps_installing">Installing %1$s…</string>
+    <string name="maps_installed">%1$s map installed.</string>
+    <string name="maps_failed">Couldn\'t install %1$s: %2$s</string>
+    <string name="maps_problem_download">the download failed. Check the connection and tap the install link again.</string>
+    <string name="maps_problem_not_zip">the download isn\'t a zip file.</string>
+    <string name="maps_problem_no_map">there\'s no map in the zip.</string>
+    <string name="maps_problem_too_many">the zip holds too many files.</string>
+    <string name="maps_problem_too_large">the map is too large.</string>
+    <string name="maps_problem_no_space">not enough free space (needs %1$s).</string>
+    <string name="maps_problem_not_map">this isn\'t a Mapsforge map file.</string>
+    <string name="maps_problem_version">this map file\'s version isn\'t supported.</string>
+    <string name="maps_problem_incomplete">the file is incomplete. Try again.</string>
+    <string name="maps_problem_damaged">the file is damaged.</string>
+    <string name="maps_offer_title">Install the %1$s map?</string>
+    <string name="maps_offer_checking">Checking the download…</string>
+    <string name="maps_offer_size">Download: %1$s</string>
+    <string name="maps_offer_size_unknown">Download size unknown.</string>
+    <string name="maps_offer_space">Needs about %1$s free; %2$s free on this phone.</string>
+    <string name="maps_offer_free">%1$s free on this phone.</string>
+    <string name="maps_offer_no_space">Not enough free space for this map.</string>
+    <string name="maps_offer_mobile">Also download over mobile data</string>
+    <string name="action_download">Download</string>
+    <string name="maps_busy">Another map is still downloading. Install this one when it has finished.</string>
+    <string name="maps_refused_title">Can\'t use this link</string>
+    <string name="maps_refused_host">Singletrail only downloads maps from OpenAndroMaps.</string>
+    <string name="maps_refused_not_map">This link isn\'t a map (for example, points of interest).</string>
+    <string name="maps_refused_link">This isn\'t a map install link.</string>
+    <string name="detail_coverage_full" formatted="false">Map coverage: 100%</string>
+    <string name="detail_coverage_missing">%1$s of this route has no installed map.</string>
 </resources>

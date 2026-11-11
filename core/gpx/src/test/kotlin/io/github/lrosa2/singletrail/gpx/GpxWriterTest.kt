@@ -38,6 +38,49 @@ class GpxWriterTest {
     )
 
     @Test
+    fun `the written text stays exactly the same`() {
+        // Shared files and stored copies: pinned, so a faster writer can't change a byte.
+        val expected = listOf(
+            """<?xml version="1.0" encoding="UTF-8"?>""",
+            """<gpx version="1.1" creator="Singletrail" xmlns="http://www.topografix.com/GPX/1/1">""",
+            """  <metadata>""",
+            """    <name>Tom &amp; Jerry &lt;&quot;fast&quot;&gt; loop</name>""",
+            """    <desc>Line one""",
+            """Line two</desc>""",
+            """  </metadata>""",
+            """  <wpt lat="46.75" lon="7.44">""",
+            """    <ele>1500</ele>""",
+            """    <name>Spring</name>""",
+            """    <desc>Water</desc>""",
+            """    <sym>Drinking Water</sym>""",
+            """  </wpt>""",
+            """  <rte>""",
+            """    <name>Planned</name>""",
+            """    <desc>From the planner</desc>""",
+            """    <rtept lat="47" lon="8"/>""",
+            """    <rtept lat="47.001" lon="8.001"/>""",
+            """  </rte>""",
+            """  <trk>""",
+            """    <name>Up</name>""",
+            """    <trkseg>""",
+            """      <trkpt lat="46.7512345" lon="7.4423456">""",
+            """        <ele>1540.4</ele>""",
+            """        <time>2026-06-14T08:00:00.250Z</time>""",
+            """      </trkpt>""",
+            """      <trkpt lat="46.7513" lon="7.4424"/>""",
+            """    </trkseg>""",
+            """    <trkseg>""",
+            """      <trkpt lat="46.76" lon="7.45">""",
+            """        <ele>-12.5</ele>""",
+            """      </trkpt>""",
+            """    </trkseg>""",
+            """  </trk>""",
+            """</gpx>""",
+        ).joinToString("\n", postfix = "\n")
+        assertEquals(expected, GpxWriter.writeToString(sample))
+    }
+
+    @Test
     fun `written document reads back identically`() {
         val back = readXml(GpxWriter.writeToString(sample))
         assertEquals(sample.copy(creator = "Singletrail"), back)

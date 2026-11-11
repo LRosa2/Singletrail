@@ -1,0 +1,91 @@
+<#
+.SYNOPSIS
+  Builds the "Singletrail MTB" theme draft (spec §7.4) from OpenAndroMaps' andromaps_mtb.xml.
+
+.DESCRIPTION
+  The andromaps_* themes may be integrated into apps (openandromaps.org/en/license). This script
+  keeps that theme and changes only what the spec asks for, so the changes stay reviewable:
+    - Paths: wider core (0.75 -> 1.3) and white casing (0.9 -> 2.0) for a sunlit LCD.
+    - Paths and tracks coloured by mtb:scale like ski runs: S0 green, S1 blue, S2 red, S3 black,
+      S4 black with a red border, S5+ black with an orange border; no scale: dark brown.
+    - Path dash pattern by trail_visibility: good or unknown solid, intermediate long dashes,
+      bad short dashes, horrible/no dots.
+    - Tracks: wider casing (1.6 -> 2.0) and core (0.75 -> 1.0).
+  Contour lines, roads and everything else are andromaps_mtb as it is.
+
+.EXAMPLE
+  ./make-theme.ps1 -Source OAM/andromaps_mtb.xml -Out OAM/singletrail_mtb.xml
+  The output must sit next to andromaps_mtb.xml: it uses the same patterns/ and symbols/.
+#>
+param(
+    [Parameter(Mandatory)] [string] $Source,
+    [Parameter(Mandatory)] [string] $Out
+)
+$ErrorActionPreference = 'Stop'
+$xml = [System.IO.File]::ReadAllText((Resolve-Path $Source))
+$Out = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Out)
+
+# mtb_scale value, colour, optional border colour (drawn underneath, wider)
+$scales = @(
+    @{ v = '~';                 color = '#5A3E1B'; border = $null }
+    @{ v = 'mtbs_0';            color = '#1E9E1E'; border = $null }
+    @{ v = 'mtbs_1';            color = '#1E5AD6'; border = $null }
+    @{ v = 'mtbs_2';            color = '#E3161E'; border = $null }
+    @{ v = 'mtbs_3';            color = '#000000'; border = $null }
+    @{ v = 'mtbs_4';            color = '#000000'; border = '#E3161E' }
+    @{ v = 'mtbs_5|mtbs_6';     color = '#000000'; border = '#FF8C00' }
+)
+# trail_visibility value, dash pattern (none = solid)
+$visibility = @(
+    @{ v = '~|excellent|good'; dash = $null }
+    @{ v = 'intermediate';     dash = '12,4' }
+    @{ v = 'bad';              dash = '5,5' }
+    @{ v = 'horrible|no';      dash = '1.5,4' }
+)
+
+function Line([string] $color, [string] $width, [string] $dash) {
+    if ($dash) { "<line stroke=`"$color`" stroke-width=`"$width`" stroke-dasharray=`"$dash`" stroke-linecap=`"butt`" />" }
+    else { "<line stroke=`"$color`" stroke-width=`"$width`" stroke-linecap=`"round`" />" }
+}
+
+$path = New-Object System.Text.StringBuilder
+[void] $path.AppendLine('<rule e="way" k="via_ferrata_flag" v="~">')
+[void] $path.AppendLine('<!-- Singletrail MTB: colour by mtb:scale, dashes by trail_visibility -->')
+foreach ($s in $scales) {
+    [void] $path.AppendLine("<rule e=`"way`" k=`"mtb_scale`" v=`"$($s.v)`">")
+    if ($s.border) { [void] $path.AppendLine((Line $s.border '2.0' $null)) }
+    foreach ($t in $visibility) {
+        [void] $path.AppendLine("<rule e=`"way`" k=`"trail_visibility`" v=`"$($t.v)`">$(Line $s.color '1.3' $t.dash)</rule>")
+    }
+    [void] $path.AppendLine('</rule>')
+}
+[void] $path.AppendLine('</rule>')
+
+$track = New-Object System.Text.StringBuilder
+[void] $track.AppendLine('<rule e="way" k="highway" v="track">')
+[void] $track.AppendLine('<!-- Singletrail MTB: track cores coloured by mtb:scale -->')
+foreach ($s in $scales) {
+    $color = if ($s.v -eq '~' -or $s.v -eq 'mtbs_0') { '#FFFAF2' } else { $s.color }
+    [void] $track.AppendLine("<rule e=`"way`" k=`"mtb_scale`" v=`"$($s.v)`">")
+    if ($s.border) { [void] $track.AppendLine((Line $s.border '1.6' $null)) }
+    [void] $track.AppendLine("$(Line $color '1.0' $null)</rule>")
+}
+
+function Replace-Once([string] $text, [string] $pattern, [string] $replacement, [string] $what) {
+    $matches = [regex]::Matches($text, $pattern, 'Singleline')
+    if ($matches.Count -ne 1) { throw "Expected one match for $what, found $($matches.Count)" }
+    return $text.Substring(0, $matches[0].Index) + $replacement + $text.Substring($matches[0].Index + $matches[0].Length)
+}
+
+# Path cores: the andromaps rule for paths without via_ferrata, up to the name labels.
+$xml = Replace-Once $xml '<rule e="way" k="via_ferrata_flag" v="~">\s*<rule e="way" k="mtb_scale" v="~">.*?</rule>\s*</rule>\s*(?=<rule e="way" k="\*" v="\*" zoom-min="16">)' ($path.ToString()) 'path cores'
+# Track cores: from the track rule's mtb_scale list up to its name labels.
+$xml = Replace-Once $xml '<rule e="way" k="highway" v="track">\s*<rule e="way" k="mtb_scale" v="~">\s*<line stroke="#fffaf2".*?(?=<rule e="way" k="\*" v="\*" zoom-min="16">)' ($track.ToString()) 'track cores'
+# Wider white path casing and brown track casing.
+$xml = Replace-Once $xml '(?<=<rule e="way" k="highway" v="footway\|path">\s*)<line stroke="#FFFFFF" stroke-width="0.9" />' '<line stroke="#FFFFFF" stroke-width="2.0" />' 'path casing'
+$xml = $xml.Replace('<line stroke="#684718" stroke-width="1.6"', '<line stroke="#684718" stroke-width="2.0"')
+
+$header = "<!-- Singletrail MTB (draft), generated by spike/theme/make-theme.ps1 from OpenAndroMaps andromaps_mtb.xml. -->`n"
+$xml = $xml -replace '^(<\?xml[^>]*\?>\s*)', "`$1$header"
+[System.IO.File]::WriteAllText($Out, $xml, (New-Object System.Text.UTF8Encoding($false)))
+"Wrote $Out"

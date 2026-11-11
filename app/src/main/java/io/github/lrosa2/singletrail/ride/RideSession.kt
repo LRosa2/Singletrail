@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.Random
 import kotlin.math.PI
 import kotlin.math.cos
@@ -54,8 +55,13 @@ class RideSession(
     private val traceHeader: TraceRecord.Header? = null,
     private val tickMillis: Long = 1_000,
     private val checkpointMillis: Long = 5_000,
+    /** Nanoseconds, to time the engine per fix for the log (spec §10: < 5 ms). */
+    private val cpuClock: () -> Long = System::nanoTime,
 ) {
     private val recorder = if (traceHeader != null) TraceRecorder(navigator, output::trace) else null
+    private var fixes = 0
+    private var fixNanos = 0L
+    private var slowestFixNanos = 0L
     private val commands = Channel<Command>(Channel.UNLIMITED)
     private val mutableState = MutableStateFlow(navigator.state)
 
@@ -69,7 +75,13 @@ class RideSession(
             readings.collect { r ->
                 output.record(r)
                 val now = max(clock(), r.fix.elapsedNanos)
-                handle(recorder?.onFix(r.fix, now) ?: navigator.onFix(r.fix, now))
+                val started = cpuClock()
+                val update = recorder?.onFix(r.fix, now) ?: navigator.onFix(r.fix, now)
+                val took = cpuClock() - started
+                fixes++
+                fixNanos += took
+                slowestFixNanos = max(slowestFixNanos, took)
+                handle(update)
             }
         }
         launch {
@@ -111,6 +123,13 @@ class RideSession(
     }
 
     fun snapshot(): NavCheckpoint = navigator.snapshot()
+
+    /** How long the engine took per fix, for the log; like [snapshot], read it after [run] ends. */
+    fun engineTimes(): String = if (fixes == 0) {
+        "Engine: no fixes"
+    } else {
+        String.format(Locale.ROOT, "Engine: %d fixes, mean %.2f ms, max %.1f ms", fixes, fixNanos / 1e6 / fixes, slowestFixNanos / 1e6)
+    }
 
     private fun handle(update: NavUpdate) {
         mutableState.value = update.state

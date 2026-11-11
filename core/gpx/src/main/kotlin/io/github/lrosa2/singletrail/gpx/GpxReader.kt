@@ -6,10 +6,6 @@ import org.xmlpull.v1.XmlPullParserException
 import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
-import java.time.format.DateTimeParseException
 import kotlin.math.abs
 
 /**
@@ -244,15 +240,7 @@ private class DocumentParser(private val p: XmlPullParser, private val limits: G
     private fun parseTime(raw: String): Long? {
         val s = raw.trim()
         if (s.isEmpty() || s.length > 40) return null
-        return try {
-            OffsetDateTime.parse(s).toInstant().toEpochMilli()
-        } catch (_: DateTimeParseException) {
-            try {
-                LocalDateTime.parse(s).toInstant(ZoneOffset.UTC).toEpochMilli() // no zone given: assume UTC
-            } catch (_: DateTimeParseException) {
-                null
-            }
-        }
+        return IsoTime.parseEpochMilli(s)
     }
 }
 

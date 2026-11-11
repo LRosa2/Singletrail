@@ -77,6 +77,19 @@
                 <data android:mimeType="text/xml" />
                 <data android:mimeType="application/zip" />
             </intent-filter>
+
+            <!-- OpenAndroMaps install links (spec §7.2, D40). Scheme matching is case-sensitive and the
+                 website writes "mf-V4-map"; browsers usually lower-case it, other apps may not, so both
+                 spellings are registered. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mf-v4-map" />
+                <data
+                    android:scheme="mf-V4-map"
+                    tools:ignore="AppLinkUrlError" />
+            </intent-filter>
         </activity>
 
         <!-- Shared GPX, zips and diagnostics (spec §8.5): read-only grants for cache/share/ only. -->

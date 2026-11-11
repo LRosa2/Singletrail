@@ -22,3 +22,6 @@ keystore.properties
 # Debug traces / exported rides that may contain location data
 *.track
 traces/
+
+# Renderer spike logs pulled from the phone (spike/measure.ps1 -Pull)
+/spike-logs/

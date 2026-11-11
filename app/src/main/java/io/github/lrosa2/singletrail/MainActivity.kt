@@ -12,6 +12,7 @@ import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.lrosa2.singletrail.data.db.SourceKind
 import io.github.lrosa2.singletrail.importing.ImportRequest
+import io.github.lrosa2.singletrail.maps.MapLink
 import io.github.lrosa2.singletrail.ride.PromptKey
 import io.github.lrosa2.singletrail.ui.SingletrailNavHost
 import io.github.lrosa2.singletrail.ui.ride.hasPreciseLocation
@@ -37,6 +38,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { container.rideController.resumeIfNeeded(hasPreciseLocation(this@MainActivity)) }
         // The watched folder is scanned when the app opens (spec §8.4).
         lifecycleScope.launch { container.watchedFolder.scanIfDue() }
+        // Maps deleted outside the app, once per start; a map download that finished meanwhile (spec §7).
+        container.maps.startupCheck()
+        container.maps.refresh()
     }
 
     /** Volume keys answer the reverse prompt while the app is in front (spec §4.5); otherwise they change the volume. */
@@ -56,6 +60,12 @@ class MainActivity : ComponentActivity() {
 
     private fun importShared(intent: Intent?) {
         if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        // An OpenAndroMaps install link (spec §7.2): checked, then confirmed on the maps screen.
+        val link = intent.data
+        if (intent.action == Intent.ACTION_VIEW && link != null && MapLink.SCHEMES.any { it.equals(link.scheme, ignoreCase = true) }) {
+            container.maps.offer(link.toString())
+            return
+        }
         val uris = sharedUris(intent)
         // The sender's read grant lasts while this activity is alive, and the queue reads at once.
         container.importer.enqueue(uris.map { ImportRequest(it.toString(), SourceKind.SHARE, confirm = true) })

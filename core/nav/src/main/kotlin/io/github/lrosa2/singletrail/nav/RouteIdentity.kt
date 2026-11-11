@@ -5,6 +5,7 @@ import java.math.RoundingMode
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.max
 
 /** Route identity for de-duplication at import (spec §8.4 step 4, D36). */
@@ -58,21 +59,34 @@ object RouteIdentity {
     private fun PreparedRoute.staysNear(other: PreparedRoute, maxDeviationMeters: Double) =
         samples.all { other.nearestSegment(it.lat, it.lon, maxDeviationMeters) != null }
 
-    private fun key(degrees: Double): Long =
-        BigDecimal.valueOf(degrees)
+    /**
+     * Degrees rounded half-up to 7 decimals, then to 5, in units of 10^-5. Plain arithmetic, because
+     * BigDecimal is 100× slower on Android; values within a hair of a half-step, where the binary
+     * product could be off, still go through BigDecimal, so the result never changes.
+     */
+    internal fun key(degrees: Double): Long {
+        val x = abs(degrees) * 1e7
+        if (x < 4.0e15) { // below 2^52, so the product keeps its fraction; false for NaN too
+            val whole = floor(x)
+            val fraction = x - whole
+            if (abs(fraction - 0.5) > 1e-6 + x * 4e-16) {
+                val units7 = whole.toLong() + if (fraction > 0.5) 1 else 0
+                val units5 = (units7 + 50) / 100 // half-up from 7 to 5 decimals, exactly, on integers
+                return if (degrees < 0) -units5 else units5
+            }
+        }
+        return BigDecimal.valueOf(degrees)
             .setScale(7, RoundingMode.HALF_UP)
             .setScale(5, RoundingMode.HALF_UP)
             .unscaledValue()
             .toLong()
+    }
 
     private fun sha256(lat: LongArray, lon: LongArray, order: IntProgression): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteBuffer.allocate(16)
-        for (i in order) {
-            buffer.clear()
-            buffer.putLong(lat[i]).putLong(lon[i])
-            digest.update(buffer.array())
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        // All points in one buffer and one update: on Android each update() is a call into native code.
+        val buffer = ByteBuffer.allocate(16 * order.count())
+        for (i in order) buffer.putLong(lat[i]).putLong(lon[i])
+        val digest = MessageDigest.getInstance("SHA-256").digest(buffer.array())
+        return digest.joinToString("") { "%02x".format(it) }
     }
 }

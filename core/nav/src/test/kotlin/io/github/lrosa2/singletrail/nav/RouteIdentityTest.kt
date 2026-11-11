@@ -14,6 +14,45 @@ class RouteIdentityTest {
 
     // --- geometry hash --------------------------------------------------------------------------
 
+    /** The key as first written with BigDecimal (slow on Android); stored hashes depend on it never changing. */
+    private fun referenceKey(degrees: Double): Long =
+        java.math.BigDecimal.valueOf(degrees)
+            .setScale(7, RoundingMode.HALF_UP)
+            .setScale(5, RoundingMode.HALF_UP)
+            .unscaledValue()
+            .toLong()
+
+    @Test
+    fun `stored hashes never change`() {
+        // Libraries and backups keep these hashes; pinned so a faster implementation can't change them.
+        val points = listOf(RoutePoint(46.7, 7.45, null), RoutePoint(46.70004495, 7.4500001, 1100.0), RoutePoint(46.71, -7.5, null))
+        val h = hashes(points)
+        assertEquals("6f9ba4c2a084da9a75aee0e047041b039a79b2eb7dd6c31cfbce18dfb447d96c", h.forward)
+        assertEquals("fe4a0e5c91cf23177794801cfba11c74bc9a6d9052f6a655a2468aba06c81a64", h.reversed)
+    }
+
+    @Test
+    fun `the coordinate key rounds exactly like BigDecimal`() {
+        val edges = listOf(
+            0.0, -0.0, 7.44233495, -7.44233495, 7.442334949999, 7.4423349500001, 7.44233499996, 46.12345, 46.123455,
+            -46.123455, 46.1234549999, 179.99999995, -179.99999995, 0.000005, -0.000005, 0.0000049999, 1e-12,
+        )
+        for (v in edges) assertEquals(referenceKey(v), RouteIdentity.key(v), "value $v")
+        val random = kotlin.random.Random(7)
+        repeat(100_000) {
+            val text = "%.${random.nextInt(5, 13)}f".format(java.util.Locale.ROOT, random.nextDouble(-180.0, 180.0))
+            val v = text.toDouble()
+            assertEquals(referenceKey(v), RouteIdentity.key(v), "value $v")
+        }
+        repeat(100_000) {
+            // Half-steps of the 8th decimal (first rounding) and of the 6th (second rounding).
+            val v = "${random.nextLong(-1_800_000_000L, 1_800_000_000L)}5E-8".toDouble()
+            assertEquals(referenceKey(v), RouteIdentity.key(v), "value $v")
+            val w = "${random.nextLong(-18_000_000L, 18_000_000L)}5E-6".toDouble()
+            assertEquals(referenceKey(w), RouteIdentity.key(w), "value $w")
+        }
+    }
+
     private val trail = polyline(
         listOf(0.0 to 0.0, 800.0 to 0.0, 800.0 to 600.0, 1500.0 to 900.0),
         ele = { 600 + it / 20 },

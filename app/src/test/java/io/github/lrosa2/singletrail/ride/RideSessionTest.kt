@@ -72,6 +72,18 @@ class RideSessionTest {
     }
 
     @Test
+    fun `the time the engine takes per fix is measured for the log`() = runTest {
+        // Read before and after each fix: the first takes 1 ms, the other three 3 ms each.
+        val cpu = ArrayDeque(listOf(0, 1, 1, 4, 4, 7, 7, 10).map { it * 1_000_000L })
+        val session = RideSession(Navigator(route), FakeOutput(), clock(), cpuClock = { cpu.removeFirst() })
+        assertEquals("Engine: no fixes", session.engineTimes())
+        val job = launch { session.run(simulated(), emptyFlow()) }
+        advanceTimeBy(3_500) // fixes at 0, 1, 2 and 3 s
+        job.cancelAndJoin()
+        assertEquals("Engine: 4 fixes, mean 2.50 ms, max 3.0 ms", session.engineTimes())
+    }
+
+    @Test
     fun `every reading is recorded, also after the finish`() = runTest {
         val out = FakeOutput()
         val session = RideSession(Navigator(route), out, clock())

@@ -11,7 +11,7 @@
 | **What** | A light Android app that follows GPX routes on a mountain bike with arrow guidance, over offline OpenStreetMap-based maps. |
 | **Who** | The owner and a few friends. Sideloaded APK (or Play closed testing). No server. F-Droid possible later. |
 | **Core loop** | Import GPX → pick a route (stars, "near me") → ride with turn banner / big arrow + beeps → ride saved to history. |
-| **Stack** | Kotlin · Jetpack Compose · Mapsforge or VTM (offline `.map`) · Room · DataStore · pure-Kotlin navigation engine. No Google Play Services. |
+| **Stack** | Kotlin · Jetpack Compose · VTM (offline Mapsforge `.map`) · Room · DataStore · pure-Kotlin navigation engine. No Google Play Services. |
 | **Maps** | OpenAndroMaps (MTB difficulty S0–S5, trail visibility, contours) installed via user-initiated links, own MTB render theme. |
 | **Test phone** | Motorola Moto G15 (budget chipset, LCD, ~5,200 mAh, single-band GPS, Android 15). |
 | **Top risk** | Guidance quality from a plain GPX track (no turn data) on twisty singletrack with single-band GPS — mitigated by switchback grouping, progress-aware matching, replay-driven tuning, and junction-aware turns in v2. |
@@ -293,8 +293,8 @@ OpenAndroMaps V5 Mapsforge `.map` files, per country or region. Example: Switzer
 - Maps deleted outside the app are detected at startup.
 
 ### 7.4 Rendering
-- **Library:** Mapsforge or VTM 0.31.x, decided by the **renderer spike** on the Moto G15 (§12.3).
-- **Multiple map files** are combined (`MultiMapDataStore`) for routes that cross a border.
+- **Library:** VTM, the OpenGL ES renderer for Mapsforge `.map` files, chosen by the **renderer spike** on the Moto G15 (§12.3, D16).
+- **Multiple map files** are combined (VTM's `MultiMapFileTileSource`) for routes that cross a border.
 - **Theme "Singletrail MTB"**, derived from an integrable `andromaps_*` theme:
   - High contrast for a sunlit LCD.
   - Trail colour by `mtb:scale` S0–S5; dash pattern by `trail_visibility`.
@@ -440,8 +440,8 @@ Crash and app logs never contain coordinates. Debug traces (which do) are separa
 |---|---|
 | Import of a 50k-point GPX | < 3 s, including maneuvers for both directions |
 | Engine per fix | < 5 ms (grid index, windowed matching) |
-| Map during ride | Smooth heading-up rotation with route overlay; redraw only on fix or interaction (renderer spike sets the exact target) |
-| Battery during ride | Target ≤ 12%/h with the dimming policy (about 8 h on 5,200 mAh); measured in the spike and in field tests |
+| Map during ride | Heading-up with route overlay at 60 fps while the map moves (95% of frames < 25 ms), first full screen < 1.5 s, memory < 150 MB (PSS). The spike measured VTM at 21.5 ms, 0.74 s and 105 MB (§12.3). M8 decides between moving the map smoothly between fixes and redrawing once per fix (D33), based on battery |
+| Battery during ride | Target ≤ 12%/h with the dimming policy (about 8 h; the test phone is a G15 power, about 6,000 mAh by its charge counter). Spike: VTM 8%/h at 50% brightness with the map moving every frame and no dimming; confirmed in field tests |
 | Memory | Bounded tile cache; no full-route object churn per fix |
 | Storage | Map files 0.5–1.5 GB per country; free-space checks before download and unpack |
 
@@ -480,6 +480,48 @@ Crash and app logs never contain coordinates. Debug traces (which do) are separa
 - **Setup:** Mapsforge and VTM, each with OpenAndroMaps Switzerland, a 30 km route overlay, heading-up rotation at 1 Hz, and the Singletrail MTB theme draft.
 - **Measured on the G15:** frame smoothness while panning and rotating, time to first render, memory, and **battery %/h with the screen on** (30 min each).
 - **Output:** a short decision record that updates D16.
+
+**Decision record (2026-11-11): VTM.**
+
+Both test apps used the same setup:
+- the Switzerland map and the 35 km route;
+- zoom 16, with the rider 3/4 down the screen;
+- the theme draft, with the screen at 50% brightness;
+- *smooth* mode, where the map moves and turns every frame (the hardest case);
+- 30 minutes each on battery.
+
+| On the G15 | VTM | Mapsforge |
+|---|---|---|
+| New map pictures per second | 60 (every frame) | 9.6 (8.6–10.7) |
+| Screen frames p50 / p95 / p99 | 16.5 / 21.5 / 25.0 ms | 16.5 / 26.0 / 30.5 ms |
+| Slow frames | 0.04% | 0.28% |
+| First full screen after start | 0.74 s (16 tiles) | 1.87 s (90 tiles) |
+| Memory (PSS) | 79–105 MB | 308–369 MB |
+| Battery | 8.0%/h (484 mAh/h) | 14.0%/h (847 mAh/h) |
+| Average current | 511 mA | 810 mA |
+| Phone temperature | 28 → 31 °C | 30 → 34 °C |
+| Spike APK (two ABIs) | 1.9 MB | 1.4 MB |
+
+- **Why Mapsforge loses:**
+  - Its screen runs at 60 fps by shifting and turning the last picture it rendered.
+  - It renders a new picture in software only about 10 times a second; its layer thread would allow 33.
+  - That picture is a bitmap 1.5× the screen diagonal on each side, which heading-up needs with the rider low: about 3,950 px square and 62 MB, and it keeps two of them.
+  - The extra 300 mA and the extra ~250 MB most likely come from this.
+  - Its labels turn with the map.
+- **What VTM does:**
+  - It draws vector tiles on the GPU in every frame.
+  - Labels stay upright.
+  - It needs no cache tuning.
+  - Even with the map moving every frame and no dimming, it stays inside the 12%/h budget.
+- **Fairness of the comparison:**
+  - The phone wasn't recharged between the runs, so the Mapsforge run started at 79% and 30 °C, against 84% and 28 °C for VTM. That can't explain 60% more current.
+  - Both runs had the same once-a-minute memory probe, which causes a ~0.1 s hitch.
+- **Not measured:** *step* mode, with one redraw per fix (D33). It would narrow the battery gap but not the memory gap, and Mapsforge has no smooth option on this phone.
+- **For the app:**
+  - Libraries: `vtm`, `vtm-android` and `vtm-themes`, plus the native libraries for arm64-v8a (and x86_64 for the emulator).
+  - Several map files are combined with `MultiMapFileTileSource`.
+  - The theme stays a Mapsforge render theme, which VTM loads as is.
+  - Version: 0.30.0 from JitPack for now, because 0.31.0 doesn't build there. A source build comes before F-Droid (v2).
 
 ### 12.4 Instrumented and device tests
 - Room migrations (`MigrationTestHelper`).
@@ -520,7 +562,7 @@ Each is ridden with the debug trace on; the traces become regression fixtures.
 
 **Dependencies (all FOSS):**
 - Compose BOM, Navigation-Compose, Lifecycle, Room (KSP), DataStore, kotlinx-coroutines, kotlinx-serialization.
-- Mapsforge **or** VTM 0.31.x.
+- VTM (`vtm`, `vtm-android`, `vtm-themes` and the native libraries for arm64-v8a, plus x86_64 for the emulator): 0.30.0 from JitPack for now. 0.31.0 doesn't build on JitPack, so a source build comes before F-Droid (v2).
 - Testing: JUnit 5 / Kotest assertions, Turbine.
 - No Hilt (manual DI via an `AppContainer`), no Play Services, no chart library.
 
@@ -568,7 +610,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 
 | # | Question | Needed by |
 |---|---|---|
-| Q1 | Mapsforge or VTM? | End of renderer spike (M2) |
+| ~~Q1~~ | ~~Mapsforge or VTM?~~ → **resolved: VTM** (D16, §12.3) | End of renderer spike (M2) |
 | ~~Q2~~ | ~~applicationId / package name~~ → **resolved: `io.github.lrosa2.singletrail`** (D41) | M0 |
 | Q3 | Licence of the app's code (GPL-3.0 vs Apache-2.0) | Before F-Droid (v2) |
 | Q4 | Final engine thresholds (off-route T, accuracy gate, turn angles, switchback window, alert times) | M10 field tuning |
@@ -595,7 +637,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D13 | Off-route target (original) | Nearest route point ahead within a ~2 km window. **Superseded by D29** | Avoid sending the rider backwards | Interview | 2026-11-09 |
 | D14 | Ride modes | Start from nearest point, ride reversed, auto-detect reverse (with the out-and-back rule); no "navigate to start" | User selection; the ACQUIRING arrow covers starting far from the route | Interview | 2026-11-09 |
 | D15 | Map source | OpenAndroMaps via user-initiated install links + manual `.map` import; own theme derived from `andromaps_*`; multiple map files combined; coverage check | Only source with MTB scale and trail visibility; its terms forbid automated in-app download and bundling the Elevate theme | Interview | 2026-11-09 |
-| D16 | Map renderer | Mapsforge vs VTM decided by an on-device spike on the G15; osmdroid excluded | Both are maintained (0.31.0, Oct 2026); osmdroid was archived Nov 2024 | Interview | 2026-11-09 |
+| D16 | Map renderer | **VTM**, chosen over Mapsforge by the on-device spike on the G15 (§12.3); osmdroid excluded | Spike on the G15 with the map moving every frame. VTM: 60 new pictures/s, 8%/h, ≤ 105 MB, first screen 0.7 s. Mapsforge: renders in software ~10×/s, 14%/h, ≤ 369 MB, 1.9 s. osmdroid was archived Nov 2024 | Interview; spike | 2026-11-09; 2026-11-11 |
 | D17 | Hillshading & DEM elevation | Deferred to v2 | Needs separate DEM files; not core to guidance | Interview | 2026-11-09 |
 | D18 | Library fields | Name, description, stars, elevation profile + stats, near me, ride history; no notes or tags | User selection | Interview | 2026-11-09 |
 | D19 | Recording | Save the ridden GPS track; view it; export as GPX; local only; delete one ride or all; deleting a route asks about its rides; route name snapshot | GPS is already running, so the extra cost is small; privacy kept local | Interview | 2026-11-09 |
@@ -695,9 +737,9 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Compose placeholder screen, strings in resources, adaptive launcher icon
 - [x] Backup policy: no cloud backup, device-to-device transfer allowed (D21)
 - [x] Release signing reads `keystore.properties` (git-ignored); README documents key creation
-- [ ] **You:** generate the release keystore outside the repo and make two offline backups
+- [x] **You:** generate the release keystore outside the repo and make two offline backups. Release APK signed with it and verified (APK Signature Scheme v2; RSA 4096; certificate SHA-256 `26924e0f96b2d1a9309b8752a96f2c89404f1346cd304847804b9f67127e3b85`)
 - [x] `test assembleDebug` green (4 unit tests); app launches on the Pixel 7 API 34 emulator
-- [ ] Launch on the Moto G15 (when connected by USB)
+- [x] Launch on the Moto G15 (moto g15 power, Android 15, MediaTek MT6769, 8 GB, 1080×2400 at 60 Hz): cold start 1.6 s release, 2.9 s debug; all 22 device tests pass on it
 - [x] git init
 - [x] First commit; pushed to private GitHub repo `LRosa2/Singletrail`
 
@@ -712,11 +754,12 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [ ] Add real exports to the fixtures as you collect them (komoot, Strava, Garmin, Trailforks)
 
 ### M2 — Renderer spike (decision gate)
-- [ ] Throwaway spike module or branch: Mapsforge vs VTM 0.31.x
-- [ ] OpenAndroMaps Switzerland `.map`, 30 km route overlay, heading-up rotation at 1 Hz
-- [ ] Draft "Singletrail MTB" theme from an `andromaps_*` theme (MTB scale colours, trail visibility)
-- [ ] Measure on the G15: smoothness, first render, memory, battery %/h (30 min each)
-- [ ] Decision record → resolves Q1, updates D16
+- [x] Throwaway spike module `spike/`, built only with `-Pspike`: one test app in two flavours (Mapsforge, VTM) with the same route, zoom, rider position, theme, overlay and measurements. Both libraries at 0.30.0 from JitPack: since 0.26 neither is published to Maven Central (OSSRH closed), and 0.31.0 fails to build on JitPack. The real app needs a source decision (JitPack, or a source build, which F-Droid will want anyway)
+- [x] OpenAndroMaps Switzerland (V5, 4 Nov 2026, 1.05 GB unpacked); a 35 km loop on the Gantrisch trails (BRouter, hiking profile) ridden at 6 m/s with a fix every second, heading-up, rider 3/4 down the screen, ridden part grey and the rest magenta; *smooth* (map moves and turns every frame between fixes) or *step* (once a second). The app logs first render, frame times every 10 s, memory every minute, battery level, charge counter and current, and a summary
+- [x] Theme draft: `spike/theme/make-theme.ps1` builds `singletrail_mtb.xml` from `andromaps_mtb.xml` (paths wider with a white casing; paths and tracks coloured by `mtb:scale` S0 green, S1 blue, S2 red, S3 black, S4 black/red, S5+ black/orange; path dashes by `trail_visibility`; wider tracks). Both libraries render it the same. Open: andromaps' MTB-route rules test `network=mtb`, but the V5 maps carry `mtbnetwork`, so signposted MTB routes don't show yet
+- [x] Found on the emulator (no GPU, so its frame rates mean nothing): Mapsforge needs every tile under the turned screen, so its frame buffer must be 1.5× the screen diagonal with the rider low, and its tile cache and label store must be sized for a 45° turn (√2 wider), or tiles and labels are evicted and re-rendered forever; its usual two-level cache stalled drawing for ~0.45 s under a lock and lost tiles, so the spike uses memory only. Result: Mapsforge 179 MB (PSS) and 4.1–4.6 s to the first full screen; VTM 39–49 MB and 2.4–3.7 s, labels upright with no extra work
+- [x] Measured on the G15 on 2026-11-11 with `spike/measure.ps1`: smooth mode, 30 min each on battery, screen at 50%. Results are in §12.3. Step mode (one redraw per fix) was not measured
+- [x] Decision record (§12.3) → **VTM**; Q1 resolved, D16 updated
 
 ### M3 — `:core:nav` basics
 - [x] Route preparation (`PreparedRoute`): points within 1 m of the last kept one dropped, cumulative distance, loop flag (< 50 m), 5 m resampling, `positionAt(s)`, reversed route
@@ -732,8 +775,9 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Library list (sort by name, stars, length, last ridden; min-stars filter), route detail (outline, stats, stars, description, edit, delete), elevation profile (Canvas)
 - [x] Verified: 35 JVM tests (import queue, row mapping, sorting, formats), 8 repository tests on the emulator; picker, "open with" from the Files app, update, split, delete and dark mode checked by hand on the Pixel 7 API 34 emulator
 - [x] "Near me" sort and remembering sort/filter across app restarts (done in M9)
-- [ ] Large-file warning above 50,000 points (§5.2) is not shown yet
-- [ ] Check import speed of a 50k-point GPX on the G15 (§10 budget: < 3 s)
+- [x] Large-file warning above 50,000 points (§5.2): in the preview and in the import result ("A very detailed recording (51,000 points): it may be slow…")
+- [x] Import speed, found on the emulator: a 51,000-point file took 18 s. Fixed without changing any result: coordinate rounding and decimals without BigDecimal (100× slower on ART), one SHA-256 update instead of one per point, ISO timestamps parsed and written without java.time (~100 µs each on ART); each checked against the old code on 100,000s of values, stored hashes and written GPX pinned by golden tests. A realistic recording (ele + time per point) now parses in 2.3–6.7 s instead of 8–21 s in a debug build on the emulator; the whole import there still takes ~20 s (debug build, software rendering)
+- [x] Import speed on the G15 with the release build (§10 budget: < 3 s): a 51,000-point recording with elevation and time on every point (5 MB) imports through the picker in 1.49 s and 1.46 s, large-file warning shown; the ~20 s seen earlier was the emulator's debug build. The app log gives each file's time ("Import PICKER x.gpx: Added(…) in 1490 ms")
 
 ### M5 — Navigation engine
 - [x] Maneuver detection v1 (`ManeuverDetector`, `MANEUVER_ALGO_VERSION = 1`): 20 m arms, 40° threshold, each turn measured from the straight before to the straight after; classes; same-direction merge within 30 m; switchback groups (≥ 3 alternating sharp/U-turns, first to last ≤ 250 m; longer stacks split); both directions via `NavRoute`
@@ -746,7 +790,7 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] `NavCheckpoint` (JSON) + `Navigator.restore`: first fix after a restore finds the rider anywhere on the route; JSONL trace (`TraceRecord`, `TraceRecorder`, `NavTrace.replay`)
 - [x] Tests: 86 new JVM tests in `:core:nav` (139 total) incl. switchback overshoot and cut-across, out-and-back and figure-8 with GPS noise, alert timing at 5/20/45 km/h and fix age, reverse on a loop, checkpoint round trips, trace replay; mutation-checked: removing the hairpin cap, the target rule or the heading penalty each fails a test
 - [x] Per fix 0.02 ms on a desktop JVM, the same for 5 km and 100 km routes; preparing a 50k-point route in both directions 0.11 s
-- [ ] Time the engine on the G15 (§10 budget: < 5 ms per fix)
+- [ ] Time the engine on the G15 (§10 budget: < 5 ms per fix). The app log gives it when a ride stops ("Engine: 1240 fixes, mean 0.31 ms, max 4.2 ms")
 - [x] Maneuvers are computed when a ride starts, not stored (D44)
 - [ ] Real ride traces as replay fixtures (M10)
 
@@ -764,10 +808,13 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [ ] Replay of a resumed trace starts from a fresh engine, so events after a resume can differ from the ride; restore-aware replay if traces need it (M10)
 
 ### M7 — Offline maps
-- [ ] `mf-v4-map` / `mf-V4-map` link handler with host allowlist + confirm dialog
-- [ ] DownloadManager download, safe unzip (zip-slip, caps, free space), header validation
-- [ ] Manual `.map` import; maps list/delete; missing-file detection
-- [ ] Singletrail MTB theme; multiple map files combined; attribution; coverage check
+- [x] `mf-v4-map` / `mf-V4-map` link handler (both spellings in the manifest) → `MapLink`: host allowlist (`ftp.gwdg.de`), only map zips under `/pub/misc/openstreetmap/openandromaps/maps…/` (POI zips, other files, `..`, escapes, queries refused), https download URL, region name and website page; confirm dialog with region, download size (HEAD), space needed and free (`StorageManager.getAllocatableBytes`), Wi-Fi only unless *Also download over mobile data*; refused links explained
+- [x] System `DownloadManager` (one at a time, app User-Agent, notification), progress on the Maps screen, completion by receiver or when the app opens; `MapInstaller`: only `.map` entries, names reduced to a plain file name (no zip-slip), entry and size caps, free-space check, entries larger than they say are refused, header validation (`MapHeader`: signature, versions 3–5, declared vs real size, bounding box, date), atomic move into `maps/`, a newer map of the same region replaces the old one (keeps its id); zip removed afterwards
+- [x] Manual import (`.map` or an OpenAndroMaps zip, recognised by content); Maps screen (list with size and map date, *Check for update* opens the region page, delete with confirmation, *Get maps*, attribution); startup check removes maps deleted outside the app (notice) and lists valid `.map` files that appeared, clears interrupted installs
+- [x] Coverage check (§7.5): route detail shows *Map coverage: 100%* or *1.8 km of this route has no installed map* with *Get maps*, from the installed maps' bounding boxes
+- [x] Verified: 35 JVM tests (links, header, installer, coverage); on the emulator a real OpenAndroMaps map (Isle of Man, 4.5 MB) installed from its install link in both spellings, header read from the real v5 file (map date 4 Nov 2026), deleted outside the app → notice, foreign host refused, coverage line on a Swiss route, delete, manual import of the zip through the picker
+- [ ] Singletrail MTB theme; multiple map files combined; map attribution on the map view — needs the renderer (M2)
+- [ ] Install a big region (Switzerland, ~780 MB) on the G15: download time, unpack time, free-space handling. The app log has the download start and "Map installed: …, unpacked in N s"
 
 ### M8 — Ride UI
 - [ ] Map view (banner, heading-up, route ahead/ridden, markers, bottom bar; back to follow after 10 s): needs M7. Until then the second page is a north-up **route overview** drawn on a Canvas (ridden grey, ahead coloured, skipped part dashed, maneuver dots, rider dot, dashed line to the return target)

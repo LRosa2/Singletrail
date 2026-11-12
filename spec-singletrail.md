@@ -334,6 +334,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
   - Actions: *Ride*, *Ride reversed*, *Share route*, *Edit name/description*, *Delete*.
 - **Ride history:** all rides. **Ride detail:** track on the map, stats, *Export GPX*, *Delete*.
 - **Maps** (see §7).
+- **About** (library menu): version and build number, author, licence (GPL-3.0), link to the source and releases, credits (OpenStreetMap, OpenAndroMaps theme, VTM).
 - **Settings:**
   - Off-route threshold, beep volume, dim level, compass on/off, map orientation.
   - Low-power threshold, watched folder, debug trace opt-in, battery helper.
@@ -869,6 +870,7 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] Library search (§8.1): names and descriptions; every word must match; case, accents and "ae/oe/ue" ignored. 4 JVM tests
 - [x] *Import from link* accepts a zip of GPX files (a route package), capped at 20 MB while downloading. 2 JVM tests
 - [x] **Route packages**, published as GitHub releases `routes-…`. `tools/routes/schweizmobil/export_routes.py` builds one from SchweizMobil's open MTB data: one GPX per local route and per national/regional stage, with searchable names ("Farner Bike (481) · Uznach loop") and descriptions (places, km, climb, difficulty, cantons, source). First package: eastern Switzerland and Liechtenstein, 51 routes (data of Sept 2026)
+- [x] *About* in the library menu (§8.1): version and build number, author, licence, source link, credits. The debug build is named "Singletrail debug" so the two launcher icons can be told apart. Checked on the G15 (0.1.2)
 
 ### M10 — Field tuning & release
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures

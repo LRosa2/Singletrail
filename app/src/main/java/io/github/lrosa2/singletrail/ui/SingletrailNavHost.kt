@@ -100,6 +100,7 @@ fun SingletrailNavHost(container: AppContainer) {
     val importLink = rememberLinkImport { link ->
         container.importer.enqueue(listOf(ImportRequest(link, SourceKind.URL, confirm = true)))
     }
+    val about = rememberAbout()
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) container.importer.enqueue(listOf(ImportRequest(uri.toString(), SourceKind.PICKER, confirm = false)))
     }
@@ -155,6 +156,7 @@ fun SingletrailNavHost(container: AppContainer) {
                                 stringResource(R.string.action_maps) to openMaps,
                                 stringResource(R.string.action_back_up) to backUp,
                                 stringResource(R.string.action_settings) to { backStack.add(SettingsKey) },
+                                stringResource(R.string.action_about) to about,
                             ),
                             onBackUp = backUp,
                             onNeedLocation = nearMe,

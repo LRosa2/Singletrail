@@ -12,6 +12,8 @@ import io.github.lrosa2.singletrail.importing.LibraryRoute
 import io.github.lrosa2.singletrail.importing.NewRoute
 import io.github.lrosa2.singletrail.importing.RouteLibrary
 import io.github.lrosa2.singletrail.nav.PreparedRoute
+import io.github.lrosa2.singletrail.nav.TrackOutline
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -109,10 +111,34 @@ class RouteRepository(
 
     override suspend fun prepared(id: String): PreparedRoute {
         val route = routes.get(id) ?: throw NoSuchElementException("No route $id")
-        return withContext(io) {
-            val doc = gpxFile(route).inputStream().buffered().use(readGpx)
-            PreparedRoute.prepare(doc.tracks.single().routePoints())
+        return withContext(io) { preparedFromFile(route) }
+    }
+
+    private fun preparedFromFile(route: RouteEntity): PreparedRoute {
+        val doc = gpxFile(route).inputStream().buffered().use(readGpx)
+        return PreparedRoute.prepare(doc.tracks.single().routePoints())
+    }
+
+    /**
+     * Gives routes stored before outlines existed (schema v1) their "near me" outline, from their GPX
+     * copy. A route whose file can't be read keeps being measured to its ends. Returns how many were
+     * filled in.
+     */
+    suspend fun fillMissingOutlines(): Int {
+        var filled = 0
+        for (route in routes.withoutOutline()) {
+            val outline = withContext(io) {
+                try {
+                    TrackOutline.of(preparedFromFile(route).points)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            } ?: continue
+            filled += routes.setOutline(route.id, route.gpxPath, outline)
         }
+        return filled
     }
 
     override suspend fun add(route: NewRoute): String {

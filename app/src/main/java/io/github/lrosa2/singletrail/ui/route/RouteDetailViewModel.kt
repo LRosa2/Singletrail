@@ -2,6 +2,9 @@ package io.github.lrosa2.singletrail.ui.route
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.lrosa2.singletrail.data.collections.CollectionRepository
+import io.github.lrosa2.singletrail.data.db.CollectionCount
+import io.github.lrosa2.singletrail.data.db.CollectionEntity
 import io.github.lrosa2.singletrail.data.db.MapFileEntity
 import io.github.lrosa2.singletrail.data.db.RideEntity
 import io.github.lrosa2.singletrail.data.db.RouteEntity
@@ -48,6 +51,7 @@ sealed interface GeometryLoad {
 class RouteDetailViewModel(
     private val repository: RouteRepository,
     private val rideRepository: RideRepository,
+    private val collections: CollectionRepository,
     maps: Flow<List<MapFileEntity>>,
     private val id: String,
 ) : ViewModel() {
@@ -55,6 +59,21 @@ class RouteDetailViewModel(
     val route: StateFlow<RouteLoad> = repository.observeRoute(id)
         .map { if (it == null) RouteLoad.Missing else RouteLoad.Loaded(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RouteLoad.Loading)
+
+    /** The collections this route is in (spec §8.1). */
+    val inCollections: StateFlow<List<CollectionEntity>> = collections.observeForRoute(id)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val allCollections: StateFlow<List<CollectionCount>> = collections.observeCounts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Puts the route in exactly [ids], plus a new collection called [newName] when given. */
+    fun setCollections(ids: Set<String>, newName: String?) {
+        viewModelScope.launch {
+            val created = newName?.let { collections.named(it)?.id }
+            collections.setForRoute(id, ids + listOfNotNull(created))
+        }
+    }
 
     /** This route's recorded rides, newest first (spec §8.1). */
     val rides: StateFlow<List<RideEntity>> = rideRepository.observeRidesOf(id)

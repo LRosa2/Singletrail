@@ -13,9 +13,11 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.kxml2.io.KXmlParser
 import java.io.ByteArrayInputStream
+import java.io.IOException
 
 class WatchedFolderScannerTest {
 
@@ -85,6 +87,15 @@ class WatchedFolderScannerTest {
         assertEquals(WatchedFileStatus.IMPORTED, entry.status)
         assertEquals("r1", entry.routeId)
         assertEquals(1_000L, entry.lastSeenAt)
+    }
+
+    @Test
+    fun `komoot's GPX Download prefix is left out of the route name`() = runTest {
+        folder.files["u1"] = "komoot.gpx" to gpx("GPX Download: Waldegg loop", 0 to 0, 800 to 0)
+        val result = scanner.scan().results.single()
+
+        assertEquals("Waldegg loop", library.routes.values.single().name)
+        assertEquals("Waldegg loop", result.routeName)
     }
 
     @Test
@@ -188,5 +199,61 @@ class WatchedFolderScannerTest {
         val t = d.tracks.single()
         val points = t.points.map { io.github.lrosa2.singletrail.nav.RoutePoint(it.lat, it.lon, it.elevation) }
         return NewRoute(name, null, SourceKind.PICKER, null, t, emptyList(), io.github.lrosa2.singletrail.nav.PreparedRoute.prepare(points), RouteIdentity.hashes(points))
+    }
+
+    private class Groups : ImportCollections {
+        val groups = LinkedHashMap<String, MutableList<String>>()
+        override suspend fun names() = groups.keys.sorted()
+        override suspend fun addTo(name: String, routeIds: List<String>) {
+            groups.getOrPut(name) { ArrayList() } += routeIds
+        }
+    }
+
+    private val groups = Groups()
+    private val grouping = WatchedFolderScanner(folder, registry, library, { reader.read(it) }, Dispatchers.Unconfined, { now }, groups)
+
+    @Test
+    fun `a file in a subfolder joins the collection named after the folder`() = runTest {
+        folder.files["u1"] = "east.gpx" to east
+        folder.files["u2"] = "north.gpx" to gpx("North", 0 to 0, 0 to 800)
+        val inFolder = mapOf("u2" to "komoot St. Gallen")
+        val source = object : FolderSource {
+            override suspend fun list() = folder.files.map { (uri, f) -> FolderFile(uri, f.first, inFolder[uri]) }
+            override suspend fun read(file: FolderFile) = folder.files.getValue(file.uri).second
+        }
+        WatchedFolderScanner(source, registry, library, { reader.read(it) }, Dispatchers.Unconfined, { now }, groups).scan()
+
+        assertEquals(mapOf("komoot St. Gallen" to listOf("r2")), groups.groups)
+    }
+
+    @Test
+    fun `files at the top level join no collection`() = runTest {
+        folder.files["u1"] = "east.gpx" to east
+        grouping.scan()
+
+        assertTrue(groups.groups.isEmpty())
+    }
+
+    private class BrokenGroups : ImportCollections {
+        override suspend fun names(): List<String> = throw IOException("disk full")
+        override suspend fun addTo(name: String, routeIds: List<String>) = throw IOException("disk full")
+    }
+
+    @Test
+    fun `a collection that can't be saved still imports and links the files`() = runTest {
+        folder.files["u1"] = "east.gpx" to east
+        scanner.scan() // East is in the library now.
+        folder.files["u2"] = "east copy.gpx" to east
+        folder.files["u3"] = "north.gpx" to gpx("North", 0 to 0, 0 to 800)
+        val source = object : FolderSource {
+            override suspend fun list() = folder.files.map { (uri, f) -> FolderFile(uri, f.first, "komoot") }
+            override suspend fun read(file: FolderFile) = folder.files.getValue(file.uri).second
+        }
+
+        val scan = WatchedFolderScanner(source, registry, library, { reader.read(it) }, Dispatchers.Unconfined, { now }, BrokenGroups()).scan()
+
+        assertInstanceOf(ImportOutcome.Added::class.java, scan.results.single().outcome)
+        assertEquals(WatchedFileStatus.IMPORTED, registry.entries.getValue("u3").status)
+        assertEquals("r1", registry.entries.getValue("u2").routeId)
     }
 }

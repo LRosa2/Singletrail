@@ -15,7 +15,9 @@ import io.github.lrosa2.singletrail.track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.kxml2.io.KXmlParser
@@ -58,6 +60,11 @@ class BackupRestorerTest {
         override suspend fun addRide(ride: BackupRide, routeId: String?, points: List<TrackPoint>) {
             rides += AddedRide(ride, routeId, points)
         }
+
+        val collected = LinkedHashMap<String, MutableList<String>>()
+        override suspend fun collect(name: String, routeIds: List<String>) {
+            collected.getOrPut(name) { ArrayList() } += routeIds
+        }
     }
 
     private fun gpx(name: String, vararg corners: Pair<Number, Number>) =
@@ -74,7 +81,14 @@ class BackupRestorerTest {
     private fun backup(
         routes: List<Pair<BackupRoute, GpxDocument>> = listOf(route("r1", "East") to east, route("r2", "North", rating = 5) to north),
         rides: List<BackupRide> = listOf(ride("d1", "r2"), ride("d2", null)),
-    ): BackupArchive {
+        collections: List<BackupCollection> = emptyList(),
+    ): BackupArchive = BackupArchive.open(backupFile(routes, rides, collections), { reader.read(it) })
+
+    private fun backupFile(
+        routes: List<Pair<BackupRoute, GpxDocument>> = listOf(route("r1", "East") to east, route("r2", "North", rating = 5) to north),
+        rides: List<BackupRide> = listOf(ride("d1", "r2"), ride("d2", null)),
+        collections: List<BackupCollection> = emptyList(),
+    ): File {
         val file = File(dir, "b${System.nanoTime()}.zip")
         file.outputStream().use { out ->
             BackupZip.writeFull(
@@ -85,9 +99,31 @@ class BackupRestorerTest {
                 rides,
                 { rideTrack() },
                 null,
+                collections,
             )
         }
-        return BackupArchive.open(file, { reader.read(it) })
+        return file
+    }
+
+    /** [source] as versions before collections wrote it: no collections.json, no "collections" on routes. */
+    private fun beforeCollections(source: File): File {
+        val out = File(dir, "old-${source.name}")
+        java.util.zip.ZipFile(source).use { zip ->
+            ZipOutputStream(out.outputStream()).use { z ->
+                for (e in zip.entries()) {
+                    if (e.name == "collections.json") continue
+                    var bytes = zip.getInputStream(e).readBytes()
+                    if (e.name == "routes.json") {
+                        bytes = String(bytes).replace(Regex(""",?"collections":\[[^\]]*]"""), "").toByteArray()
+                        assertFalse("collections" in String(bytes))
+                    }
+                    z.putNextEntry(ZipEntry(e.name))
+                    z.write(bytes)
+                    z.closeEntry()
+                }
+            }
+        }
+        return out
     }
 
     private fun route(id: String, name: String, rating: Int? = null) = BackupRoute(
@@ -184,5 +220,34 @@ class BackupRestorerTest {
         val summary = BackupArchive.open(stripped, { reader.read(it) }).use { BackupRestorer(target, Dispatchers.Unconfined).restore(it, withRides = true) }
         assertEquals(1, summary.routesAdded)
         assertEquals(1, summary.failed)
+    }
+
+    @Test
+    fun `restored and kept routes go back into their collections, and empty collections come back too`() = runTest {
+        val target = FakeTarget().apply { local("here-1", east) }
+        val archive = backup(
+            routes = listOf(
+                route("r1", "East").copy(collections = listOf("komoot")) to east,
+                route("r2", "North").copy(collections = listOf("komoot", "To ride")) to north,
+            ),
+            rides = emptyList(),
+            collections = listOf(BackupCollection("komoot", 1), BackupCollection("Empty", 2)),
+        )
+
+        archive.use { BackupRestorer(target, Dispatchers.Unconfined).restore(it, withRides = false) }
+
+        assertEquals(listOf("here-1", "new-1"), target.collected["komoot"])
+        assertEquals(listOf("new-1"), target.collected["To ride"])
+        assertEquals(emptyList<String>(), target.collected["Empty"])
+    }
+
+    @Test
+    fun `a backup without collections restores without them`() = runTest {
+        val target = FakeTarget()
+        val old = BackupArchive.open(beforeCollections(backupFile()), { reader.read(it) })
+        val summary = old.use { BackupRestorer(target, Dispatchers.Unconfined).restore(it, withRides = true) }
+
+        assertEquals(RestoreSummary(routesAdded = 2, routesKept = 0, ridesAdded = 2, ridesSkipped = 0, failed = 0), summary)
+        assertTrue(target.collected.isEmpty())
     }
 }

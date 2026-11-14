@@ -15,12 +15,16 @@ internal object LocalPlane {
     class Projection(val t: Double, val distanceMeters: Double)
 
     /** Projects the point ([lat], [lon]) onto the segment from [a] to [b], on a plane centred on the point. */
-    fun projectOntoSegment(lat: Double, lon: Double, a: RoutePoint, b: RoutePoint): Projection {
+    fun projectOntoSegment(lat: Double, lon: Double, a: RoutePoint, b: RoutePoint): Projection =
+        projectOntoSegment(lat, lon, a.lat, a.lon, b.lat, b.lon)
+
+    /** [projectOntoSegment] for a segment given by its ends' coordinates. */
+    fun projectOntoSegment(lat: Double, lon: Double, aLat: Double, aLon: Double, bLat: Double, bLon: Double): Projection {
         val kx = METERS_PER_DEGREE * cos(Math.toRadians(lat))
-        val ax = Geo.lonDelta(lon, a.lon) * kx
-        val ay = (a.lat - lat) * METERS_PER_DEGREE
-        val dx = Geo.lonDelta(a.lon, b.lon) * kx
-        val dy = (b.lat - a.lat) * METERS_PER_DEGREE
+        val ax = Geo.lonDelta(lon, aLon) * kx
+        val ay = (aLat - lat) * METERS_PER_DEGREE
+        val dx = Geo.lonDelta(aLon, bLon) * kx
+        val dy = (bLat - aLat) * METERS_PER_DEGREE
         val len2 = dx * dx + dy * dy
         val t = if (len2 == 0.0) 0.0 else (-(ax * dx + ay * dy) / len2).coerceIn(0.0, 1.0)
         return Projection(t, hypot(ax + t * dx, ay + t * dy))

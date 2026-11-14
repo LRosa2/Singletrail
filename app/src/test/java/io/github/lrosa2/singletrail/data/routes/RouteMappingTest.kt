@@ -48,6 +48,15 @@ class RouteMappingTest {
     }
 
     @Test
+    fun `a new route row keeps an outline of the track for near me`() {
+        val row = hill.toEntity(id = "id1", gpxPath = "routes/id1.gpx", now = 1234L)
+
+        // The corner at (1000, 0): 1 km from the start, 500 m from the finish.
+        assertEquals(0.0, row.outline!!.distanceMeters(Plane.lat(0.0), Plane.lon(1000.0)), 1.5)
+        assertEquals(3, row.outline.size)
+    }
+
+    @Test
     fun `a track without elevation has no climb`() {
         val flat = newRoute(track("Flat", line(0 to 0, 1000 to 0)))
         val row = flat.toEntity("id2", "routes/id2.gpx", now = 0L)
@@ -77,6 +86,7 @@ class RouteMappingTest {
         assertEquals(1800.0, row.distanceM, 1.0)
         assertEquals(longer.hashes.forward, row.geometryHash)
         assertEquals(2000L, row.updatedAt)
+        assertEquals(0.0, row.outline!!.distanceMeters(Plane.lat(800.0), Plane.lon(1000.0)), 1.5)
         // Maneuvers must be recomputed for the new geometry.
         assertEquals(0, row.turnsAlgoVersion)
     }

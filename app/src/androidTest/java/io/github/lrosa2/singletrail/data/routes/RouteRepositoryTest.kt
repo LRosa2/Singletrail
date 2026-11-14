@@ -164,4 +164,35 @@ class RouteRepositoryTest {
         assertThrows(IllegalArgumentException::class.java) { kotlinx.coroutines.runBlocking { repo.edit(id, " ", null) } }
         assertNotEquals("", repo.observeRoute(id).first()!!.name)
     }
+
+    private fun clearOutlines() = db.openHelper.writableDatabase.execSQL("UPDATE routes SET outline = NULL")
+
+    @Test
+    fun routesStoredBeforeOutlinesGetThemFromTheirGpx() = runTest {
+        val id = repo.add(east)
+        val before = repo.route(id)!!
+        clearOutlines()
+        assertNull(repo.route(id)!!.outline)
+
+        assertEquals(1, repo.fillMissingOutlines())
+
+        val after = repo.route(id)!!
+        assertEquals(before.outline, after.outline)
+        // Derived data: the route itself hasn't changed.
+        assertEquals(before.updatedAt, after.updatedAt)
+        assertEquals(0, repo.fillMissingOutlines())
+    }
+
+    @Test
+    fun aRouteWhoseGpxCantBeReadKeepsNoOutlineAndTheOthersAreFilled() = runTest {
+        val broken = repo.add(east)
+        val fine = repo.add(newRoute(track("North", line(0 to 0, 0 to 1000))))
+        clearOutlines()
+        repo.gpxFile(repo.route(broken)!!).delete()
+
+        assertEquals(1, repo.fillMissingOutlines())
+
+        assertNull(repo.route(broken)!!.outline)
+        assertTrue(repo.route(fine)!!.outline != null)
+    }
 }

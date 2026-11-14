@@ -19,6 +19,8 @@ data class BackupManifest(
     val owner: String? = null,
     val routes: Int = 0,
     val rides: Int = 0,
+    /** A routes zip shared from a collection: its name, so importing recreates the collection (spec §8.5). */
+    val collection: String? = null,
 ) {
     companion object {
         const val FORMAT = 1
@@ -41,7 +43,13 @@ data class BackupRoute(
     val geometryHash: String,
     /** Entry path of the route's GPX in the zip. */
     val file: String,
+    /** Names of the collections the route is in (spec §8.5); absent in older backups. */
+    val collections: List<String> = emptyList(),
 )
+
+/** A collection in a full backup (`collections.json`), so empty collections come back too. */
+@Serializable
+data class BackupCollection(val name: String, val createdAt: Long)
 
 @Serializable
 data class BackupRide(

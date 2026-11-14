@@ -47,6 +47,17 @@ data class PendingMapDownload(val downloadId: Long, val link: String)
 
 private val Context.settingsData by preferencesDataStore(name = "settings")
 
+/** The library's remembered choices (spec §8.1) as plain values, so an unknown value just resets; search isn't remembered. */
+data class LibraryViewSettings(
+    val sort: String? = null,
+    val minStars: Int? = null,
+    val length: String? = null,
+    val climb: String? = null,
+    val notRidden: Boolean = false,
+    val loopsOnly: Boolean = false,
+    val collection: String? = null,
+)
+
 class SettingsStore(context: Context) {
     private val data = context.applicationContext.settingsData
 
@@ -94,16 +105,29 @@ class SettingsStore(context: Context) {
         )
     }
 
-    /** The library's sort order (by name) and minimum stars, remembered across restarts. */
-    suspend fun libraryView(): Pair<String?, Int?> {
+    /** The library's sort, filters and collection, remembered across restarts (spec §8.1). */
+    suspend fun libraryView(): LibraryViewSettings {
         val prefs = data.data.first()
-        return prefs[LIBRARY_SORT] to prefs[LIBRARY_MIN_STARS]?.takeIf { it in 1..5 }
+        return LibraryViewSettings(
+            sort = prefs[LIBRARY_SORT],
+            minStars = prefs[LIBRARY_MIN_STARS]?.takeIf { it in 1..5 },
+            length = prefs[LIBRARY_LENGTH],
+            climb = prefs[LIBRARY_CLIMB],
+            notRidden = prefs[LIBRARY_NOT_RIDDEN] ?: false,
+            loopsOnly = prefs[LIBRARY_LOOPS_ONLY] ?: false,
+            collection = prefs[LIBRARY_COLLECTION],
+        )
     }
 
-    suspend fun saveLibraryView(sort: String, minStars: Int?) {
+    suspend fun saveLibraryView(view: LibraryViewSettings) {
         data.edit {
-            it[LIBRARY_SORT] = sort
-            it[LIBRARY_MIN_STARS] = minStars ?: 0
+            if (view.sort == null) it.remove(LIBRARY_SORT) else it[LIBRARY_SORT] = view.sort
+            it[LIBRARY_MIN_STARS] = view.minStars ?: 0
+            if (view.length == null) it.remove(LIBRARY_LENGTH) else it[LIBRARY_LENGTH] = view.length
+            if (view.climb == null) it.remove(LIBRARY_CLIMB) else it[LIBRARY_CLIMB] = view.climb
+            it[LIBRARY_NOT_RIDDEN] = view.notRidden
+            it[LIBRARY_LOOPS_ONLY] = view.loopsOnly
+            if (view.collection == null) it.remove(LIBRARY_COLLECTION) else it[LIBRARY_COLLECTION] = view.collection
         }
     }
 
@@ -160,6 +184,11 @@ class SettingsStore(context: Context) {
         val WATCHED_FOLDER = stringPreferencesKey("watched_folder")
         val LIBRARY_SORT = stringPreferencesKey("library_sort")
         val LIBRARY_MIN_STARS = intPreferencesKey("library_min_stars")
+        val LIBRARY_LENGTH = stringPreferencesKey("library_length")
+        val LIBRARY_CLIMB = stringPreferencesKey("library_climb")
+        val LIBRARY_NOT_RIDDEN = booleanPreferencesKey("library_not_ridden")
+        val LIBRARY_LOOPS_ONLY = booleanPreferencesKey("library_loops_only")
+        val LIBRARY_COLLECTION = stringPreferencesKey("library_collection")
         val LAST_BACKUP = longPreferencesKey("last_backup_at")
         val BACKUP_OWNER = stringPreferencesKey("backup_owner")
         val MAP_DOWNLOAD_ID = longPreferencesKey("map_download_id")

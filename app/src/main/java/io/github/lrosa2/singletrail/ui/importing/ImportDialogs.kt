@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,7 @@ import io.github.lrosa2.singletrail.importing.ImportProblem
 import io.github.lrosa2.singletrail.importing.ImportQuestion
 import io.github.lrosa2.singletrail.importing.ImportResult
 import io.github.lrosa2.singletrail.importing.RoutePreview
+import io.github.lrosa2.singletrail.importing.routeIdOf
 import io.github.lrosa2.singletrail.ui.Formats
 import io.github.lrosa2.singletrail.ui.RouteOutline
 import kotlinx.coroutines.delay
@@ -64,7 +67,7 @@ fun ImportDialogs(importer: ImportCoordinator, onOpenRoute: (String) -> Unit) {
     }
 
     when {
-        question != null -> QuestionDialog(question, importer::answer)
+        question != null -> QuestionDialog(question, importer::answer, importer::putInCollection)
         state.busy -> if (showProgress) ProgressDialog(state.working.orEmpty()) { showProgress = false }
         reported.isNotEmpty() -> ResultsDialog(
             reported,
@@ -78,7 +81,7 @@ fun ImportDialogs(importer: ImportCoordinator, onOpenRoute: (String) -> Unit) {
 }
 
 @Composable
-private fun QuestionDialog(question: ImportQuestion, onAnswer: (ImportAnswer) -> Unit) {
+private fun QuestionDialog(question: ImportQuestion, onAnswer: (ImportAnswer) -> Unit, onCollection: (String) -> Unit) {
     val cancel = stringResource(R.string.action_cancel) to { onAnswer(ImportAnswer.CANCEL) }
     when (question) {
         is ImportQuestion.ConfirmAdd -> ChoiceDialog(
@@ -133,6 +136,33 @@ private fun QuestionDialog(question: ImportQuestion, onAnswer: (ImportAnswer) ->
                 Text(pluralStringResource(R.plurals.import_multi_body, count, question.fileName, count))
                 val unnamed = stringResource(R.string.import_unnamed_track)
                 question.trackNames.forEach { Text("• ${it ?: unnamed}") }
+            }
+        }
+
+        is ImportQuestion.PutInCollection -> {
+            var name by rememberSaveable { mutableStateOf("") }
+            ChoiceDialog(
+                title = stringResource(R.string.import_collection_title),
+                onDismiss = { onAnswer(ImportAnswer.CANCEL) },
+                choices = listOf(
+                    stringResource(R.string.import_collection_put) to { if (name.isNotBlank()) onCollection(name) },
+                    stringResource(R.string.import_collection_no) to { onAnswer(ImportAnswer.CANCEL) },
+                ),
+            ) {
+                Text(pluralStringResource(R.plurals.import_collection_body, question.routes, question.routes))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.collection_new)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (question.existing.isNotEmpty()) {
+                    Text(stringResource(R.string.import_collection_existing), style = MaterialTheme.typography.bodyMedium)
+                    question.existing.forEach { existing ->
+                        TextButton(onClick = { onCollection(existing) }) { Text(existing) }
+                    }
+                }
             }
         }
     }
@@ -237,6 +267,9 @@ private fun ResultsDialog(results: List<ImportResult>, onOpen: (String) -> Unit,
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 },
                             )
+                            result.collection?.takeIf { routeIdOf(result.outcome) != null }?.let {
+                                Text(stringResource(R.string.import_in_collection, it), style = MaterialTheme.typography.bodySmall)
+                            }
                             result.largePoints?.let { points ->
                                 Text(
                                     pluralStringResource(R.plurals.import_large, points, points),
@@ -254,13 +287,6 @@ private fun ResultsDialog(results: List<ImportResult>, onOpen: (String) -> Unit,
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
     )
-}
-
-private fun routeIdOf(outcome: ImportOutcome): String? = when (outcome) {
-    is ImportOutcome.Added -> outcome.routeId
-    is ImportOutcome.Updated -> outcome.routeId
-    is ImportOutcome.AlreadyInLibrary -> outcome.routeId
-    else -> null
 }
 
 @Composable

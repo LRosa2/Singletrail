@@ -1,12 +1,14 @@
 package io.github.lrosa2.singletrail.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import io.github.lrosa2.singletrail.nav.TrackOutline
 
-// Schema v1 (spec §8.2). Until the first release to friends, v1 may still change; after that every
-// change needs a migration tested against the exported schema in app/schemas.
+// Schema v3 (spec §8.2). Every change needs a migration tested against the exported schemas in
+// app/schemas (v2 added routes.outline, v3 the collections tables).
 
 /** Where a route came from. */
 enum class SourceKind { SHARE, PICKER, FOLDER, URL, BACKUP }
@@ -62,6 +64,8 @@ data class RouteEntity(
     val lastRiddenAt: Long?,
     /** Version of the maneuver algorithm that produced the stored maneuvers; 0 = not computed yet. */
     val turnsAlgoVersion: Int,
+    /** The track thinned for "near me" (§8.1); null until filled in for routes imported before v2. */
+    val outline: TrackOutline?,
 )
 
 @Entity(
@@ -165,4 +169,28 @@ data class MapFileEntity(
     val mapDate: Long?,
     val sourceUrl: String?,
     val installedAt: Long,
+)
+
+/** A named group of routes (spec §8.2, D48). The name is unique ignoring case (NOCASE column + unique index). */
+@Entity(tableName = "collections", indices = [Index(value = ["name"], unique = true)])
+data class CollectionEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(collate = ColumnInfo.NOCASE) val name: String,
+    val createdAt: Long,
+)
+
+/** A route in a collection; a route can be in several. Deleting either side removes only the row. */
+@Entity(
+    tableName = "route_collections",
+    primaryKeys = ["routeId", "collectionId"],
+    indices = [Index("collectionId")],
+    foreignKeys = [
+        ForeignKey(entity = RouteEntity::class, parentColumns = ["id"], childColumns = ["routeId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = CollectionEntity::class, parentColumns = ["id"], childColumns = ["collectionId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class RouteCollectionEntity(
+    val routeId: String,
+    val collectionId: String,
+    val addedAt: Long,
 )

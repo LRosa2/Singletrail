@@ -74,6 +74,24 @@ class ImportCoordinatorTest {
         fun names() = routes.values.map { it.route.name }
     }
 
+    private class FakeCollections : ImportCollections {
+        val groups = LinkedHashMap<String, MutableList<String>>()
+
+        /** The database can't be written: every call fails. */
+        var broken = false
+
+        override suspend fun names(): List<String> {
+            if (broken) throw IOException("disk full")
+            return groups.keys.sorted()
+        }
+
+        override suspend fun addTo(name: String, routeIds: List<String>) {
+            if (broken) throw IOException("disk full")
+            groups.getOrPut(name) { ArrayList() } += routeIds
+        }
+    }
+
+    private val collections = FakeCollections()
     private val library = FakeLibrary()
     private val names = HashMap<String, String>()
     private val files = HashMap<String, GpxDocument>()
@@ -133,7 +151,7 @@ class ImportCoordinatorTest {
             restorer = BackupRestorer(restoreTarget, dispatcher),
             ownerId = { "me" },
         )
-        return ImportCoordinator(source, library, scope, dispatcher, archives, log, largeRoutePoints, clock)
+        return ImportCoordinator(source, library, scope, dispatcher, archives, log, largeRoutePoints, clock, collections)
     }
 
     /** A full backup made by [owner] with one route and one ride. */
@@ -336,7 +354,8 @@ class ImportCoordinatorTest {
         c.enqueue(picked("u1", "u2"))
         advanceUntilIdle()
 
-        assertNull(c.state.value.question)
+        // Not asked whether it is the same route; only, at the end, about a collection (spec §8.4 step 7).
+        assertInstanceOf(ImportQuestion.PutInCollection::class.java, c.state.value.question)
         assertEquals(listOf("East", "Parallel"), library.names())
     }
 
@@ -405,6 +424,40 @@ class ImportCoordinatorTest {
         advanceUntilIdle()
 
         assertEquals(listOf("Morning ride"), library.names())
+    }
+
+    @Test
+    fun `komoot's GPX Download prefix is left out of the route name`() = runTest {
+        file("u1", "2025-09-28_2605563075_GPX Download_ Waldegg loop.gpx", doc(track("GPX Download: Waldegg loop", east)))
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("Waldegg loop"), library.names())
+        assertEquals("Waldegg loop", c.state.value.results.single().routeName)
+    }
+
+    @Test
+    fun `a track named only GPX Download falls back to the file name`() = runTest {
+        file("u1", "Waldegg loop.gpx", doc(track("GPX Download:", east)))
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("Waldegg loop"), library.names())
+    }
+
+    @Test
+    fun `split tracks lose the prefix too`() = runTest {
+        file("u1", "two.gpx", doc(track("GPX Download: East", east), track("GPX Download: North", north)))
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("East", "North"), (c.state.value.question as ImportQuestion.MultipleTracks).trackNames)
+        c.answer(ImportAnswer.SPLIT)
+        advanceUntilIdle()
+        assertEquals(listOf("East", "North"), library.names())
     }
 
     @Test
@@ -605,5 +658,158 @@ class ImportCoordinatorTest {
         advanceUntilIdle()
 
         assertEquals(listOf<ImportOutcome>(ImportOutcome.Failed(ImportProblem.DAMAGED)), c.outcomes())
+    }
+
+    private fun routesZip(uri: String, fileName: String, vararg routes: Pair<String, GpxDocument>, collection: String? = null) {
+        val file = File(dir, "$uri.zip")
+        file.outputStream().use { BackupZip.writeRoutes(it, "t", 1, routes.toList(), collection) }
+        zips[uri] = file
+        names[uri] = fileName
+    }
+
+    @Test
+    fun `a zip's routes go into a collection named after the zip`() = runTest {
+        routesZip("z", "SchweizMobil-MTB-Ostschweiz.zip", "East" to doc(track("East", east)), "North" to doc(track("North", north)))
+        val c = coordinator()
+        c.enqueue(picked("z"))
+        advanceUntilIdle()
+
+        assertEquals(mapOf("SchweizMobil-MTB-Ostschweiz" to library.routes.keys.toList()), collections.groups)
+        assertEquals(listOf("SchweizMobil-MTB-Ostschweiz", "SchweizMobil-MTB-Ostschweiz"), c.state.value.results.map { it.collection })
+    }
+
+    @Test
+    fun `importing the same zip again groups routes already in the library`() = runTest {
+        file("u1", "east.gpx", doc(track("East", east)))
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+        val eastId = library.routes.keys.single()
+
+        routesZip("z", "Ostschweiz.zip", "East" to doc(track("East", east)), "North" to doc(track("North", north)))
+        c.enqueue(picked("z"))
+        advanceUntilIdle()
+
+        val northId = library.routes.keys.last()
+        assertEquals(mapOf("Ostschweiz" to listOf(eastId, northId)), collections.groups)
+    }
+
+    @Test
+    fun `a shared collection zip uses the name in its manifest`() = runTest {
+        routesZip("z", "Singletrail routes.zip", "East" to doc(track("East", east)), collection = "Waldegg loops")
+        val c = coordinator()
+        c.enqueue(shared("z"))
+        advanceUntilIdle()
+
+        assertEquals(setOf("Waldegg loops"), collections.groups.keys)
+    }
+
+    @Test
+    fun `several files at once ask to be put in a collection`() = runTest {
+        file("u1", "east.gpx", doc(track("East", east)))
+        file("u2", "north.gpx", doc(track("North", north)))
+        collections.groups["To ride"] = ArrayList()
+        val c = coordinator()
+        c.enqueue(picked("u1", "u2"))
+        advanceUntilIdle()
+
+        val question = c.state.value.question as ImportQuestion.PutInCollection
+        assertEquals(2, question.routes)
+        assertEquals(listOf("To ride"), question.existing)
+        c.putInCollection("Waldegg loops")
+        advanceUntilIdle()
+
+        assertNull(c.state.value.question)
+        assertEquals(library.routes.keys.toList(), collections.groups["Waldegg loops"])
+    }
+
+    @Test
+    fun `saying no to the collection keeps the routes ungrouped`() = runTest {
+        file("u1", "east.gpx", doc(track("East", east)))
+        file("u2", "north.gpx", doc(track("North", north)))
+        val c = coordinator()
+        c.enqueue(picked("u1", "u2"))
+        advanceUntilIdle()
+        c.answer(ImportAnswer.CANCEL)
+        advanceUntilIdle()
+
+        assertEquals(2, library.routes.size)
+        assertTrue(collections.groups.isEmpty())
+    }
+
+    @Test
+    fun `routes already in the library count for the collection`() = runTest {
+        file("u1", "east.gpx", doc(track("East", east)))
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+        file("u2", "north.gpx", doc(track("North", north)))
+        c.enqueue(picked("u1", "u2"))
+        advanceUntilIdle()
+
+        assertEquals(2, (c.state.value.question as ImportQuestion.PutInCollection).routes)
+    }
+
+    @Test
+    fun `two files of the same route don't ask about a collection`() = runTest {
+        file("u1", "east.gpx", doc(track("East", east)))
+        file("u2", "east copy.gpx", doc(track("East again", east)))
+        val c = coordinator()
+        c.enqueue(picked("u1", "u2"))
+        advanceUntilIdle()
+
+        assertNull(c.state.value.question)
+        assertEquals(1, library.routes.size)
+    }
+
+    @Test
+    fun `a single file is not put in a collection`() = runTest {
+        file("u1", "east.gpx", doc(track("East", east)))
+        val c = coordinator()
+        c.enqueue(picked("u1"))
+        advanceUntilIdle()
+
+        assertNull(c.state.value.question)
+        assertTrue(collections.groups.isEmpty())
+    }
+
+    @Test
+    fun `a zip in a batch keeps its own collection and isn't counted again`() = runTest {
+        routesZip("z", "Ostschweiz.zip", "East" to doc(track("East", east)))
+        file("u1", "north.gpx", doc(track("North", north)))
+        val c = coordinator()
+        c.enqueue(picked("z", "u1"))
+        advanceUntilIdle()
+
+        assertNull(c.state.value.question) // Only one loose route: no question.
+        assertEquals(setOf("Ostschweiz"), collections.groups.keys)
+    }
+
+    @Test
+    fun `a collection that can't be saved doesn't fail the zip's routes`() = runTest {
+        collections.broken = true
+        routesZip("z", "Ostschweiz.zip", "East" to doc(track("East", east)), "North" to doc(track("North", north)))
+        val c = coordinator()
+        c.enqueue(picked("z"))
+        advanceUntilIdle()
+
+        assertEquals(2, library.routes.size)
+        assertTrue(c.outcomes().all { it is ImportOutcome.Added }, c.outcomes().toString())
+    }
+
+    @Test
+    fun `a collection that can't be saved doesn't stop the queue`() = runTest {
+        collections.broken = true
+        file("u1", "east.gpx", doc(track("East", east)))
+        file("u2", "north.gpx", doc(track("North", north)))
+        file("u3", "far.gpx", doc(track("Far", line(5000 to 0, 6000 to 0))))
+        val c = coordinator()
+        c.enqueue(picked("u1", "u2"))
+        advanceUntilIdle()
+        c.enqueue(picked("u3"))
+        advanceUntilIdle()
+
+        assertNull(c.state.value.question)
+        assertEquals(listOf("East", "North", "Far"), library.names())
     }
 }

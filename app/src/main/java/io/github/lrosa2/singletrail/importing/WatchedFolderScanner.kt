@@ -15,8 +15,8 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.security.MessageDigest
 
-/** A GPX file in the watched folder. */
-data class FolderFile(val uri: String, val name: String)
+/** A GPX file in the watched folder; [folder] is its own folder's name, null at the top level. */
+data class FolderFile(val uri: String, val name: String, val folder: String? = null)
 
 /** The watched folder (spec §8.4): a persisted, read-only document tree. */
 interface FolderSource {
@@ -70,6 +70,7 @@ class WatchedFolderScanner(
     private val readGpx: (InputStream) -> GpxDocument,
     private val work: CoroutineDispatcher = Dispatchers.Default,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val collections: ImportCollections? = null,
 ) {
     data class Scan(
         /** Routes added or updated, and files that failed; nothing for skipped or linked files. */
@@ -157,6 +158,7 @@ class WatchedFolderScanner(
         }
         library.routeWithGeometry(hashes)?.let { id ->
             registry.put(record(hash, id, WatchedFileStatus.IMPORTED))
+            group(file, id)
             return Step.Linked
         }
         val prepared = try {
@@ -164,7 +166,7 @@ class WatchedFolderScanner(
         } catch (_: IllegalArgumentException) {
             return failed(hash, ImportProblem.TOO_SHORT)
         }
-        val name = track.name ?: file.name.replace(GPX_SUFFIX, "")
+        val name = RouteNames.clean(track.name) ?: file.name.replace(GPX_SUFFIX, "")
         val route = NewRoute(name, track.description, SourceKind.FOLDER, file.name, track, doc.waypoints, prepared, hashes)
         val ownRoute = previous?.routeId?.takeIf { library.exists(it) }
         return try {
@@ -172,16 +174,34 @@ class WatchedFolderScanner(
                 // The file changed: it is still the source of the route it made.
                 library.replace(ownRoute, route)
                 registry.put(record(hash, ownRoute, WatchedFileStatus.IMPORTED))
+                group(file, ownRoute)
                 Step.Reported(ImportResult(file.name, name, ImportOutcome.Updated(ownRoute)))
             } else {
                 val id = library.add(route)
                 registry.put(record(hash, id, WatchedFileStatus.IMPORTED))
+                group(file, id)
                 Step.Reported(ImportResult(file.name, name, ImportOutcome.Added(id)))
             }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             failed(hash, ImportProblem.SAVE_FAILED)
+        }
+    }
+
+    /**
+     * A file in a subfolder joins the collection named after that folder (spec §8.4 step 7). Only a
+     * side effect: when it fails, the file is still imported and linked to its route.
+     */
+    private suspend fun group(file: FolderFile, routeId: String) {
+        val name = file.folder ?: return
+        val group = collections ?: return
+        try {
+            group.addTo(name, listOf(routeId))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Left out of the collection; the next change to the file tries again.
         }
     }
 

@@ -19,11 +19,63 @@
     <string name="library_title">Routes</string>
     <string name="library_empty_title">No routes yet</string>
     <string name="library_empty_body">Import GPX files from your phone, or open a GPX file with Singletrail from another app, such as a messenger or the Files app.</string>
-    <string name="library_no_matches">No routes with %1$d or more stars.</string>
     <string name="library_no_search_matches">No routes match “%1$s”.</string>
     <string name="library_search_hint">Search names and descriptions</string>
     <string name="action_clear_search">Clear search</string>
     <string name="action_show_all">Show all routes</string>
+    <string name="collection_all">All routes</string>
+    <string name="collection_none">Not in a collection</string>
+    <string name="filters_chip">Filters</string>
+    <string name="filters_chip_count">Filters (%1$d)</string>
+    <string name="filters_title">Filters</string>
+    <string name="filters_stars">Stars</string>
+    <string name="filters_length">Length</string>
+    <string name="filters_climb">Climb</string>
+    <string name="filters_any">Any</string>
+    <string name="filters_stars_min">%1$d+</string>
+    <string name="filters_length_short">Up to 20 km</string>
+    <string name="filters_length_medium">20–40 km</string>
+    <string name="filters_length_long">Over 40 km</string>
+    <string name="filters_climb_low">Up to 500 m</string>
+    <string name="filters_climb_medium">500–1000 m</string>
+    <string name="filters_climb_high">Over 1000 m</string>
+    <string name="filters_not_ridden">Not ridden yet</string>
+    <string name="filters_loops">Loops only</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_done">Done</string>
+    <string name="library_no_matches_filters">No routes match the chosen collection and filters.</string>
+    <string name="action_add_to_collection">Add to collection…</string>
+    <string name="action_remove_from_collection">Remove from “%1$s”</string>
+    <string name="action_manage_collections">Manage collections…</string>
+    <string name="action_rename">Rename</string>
+    <string name="collections_title">Collections</string>
+    <string name="collections_empty">No collections yet. Make one here, or select routes in the library (long-press) and add them to a collection.</string>
+    <string name="collection_new">New collection</string>
+    <string name="collection_new_hint">Name of a new collection</string>
+    <string name="collection_name">Name</string>
+    <string name="collection_rename_title">Rename collection</string>
+    <string name="collection_name_taken">Another collection already has this name.</string>
+    <string name="collection_delete_title">Delete collection?</string>
+    <plurals name="collection_delete_body">
+        <item quantity="one">“%1$s” is deleted. Its %2$d route stays in the library.</item>
+        <item quantity="other">“%1$s” is deleted. Its %2$d routes stay in the library.</item>
+    </plurals>
+    <plurals name="collection_routes">
+        <item quantity="one">%d route</item>
+        <item quantity="other">%d routes</item>
+    </plurals>
+    <string name="detail_collections">Collections</string>
+    <string name="detail_no_collections">In no collection</string>
+    <string name="action_edit_collections">Edit</string>
+    <string name="import_collection_title">Put them in a collection?</string>
+    <plurals name="import_collection_body">
+        <item quantity="one">%d route was imported.</item>
+        <item quantity="other">%d routes were imported together. A collection keeps them together in the library.</item>
+    </plurals>
+    <string name="import_collection_existing">Or add them to:</string>
+    <string name="import_collection_put">Put in collection</string>
+    <string name="import_collection_no">No</string>
+    <string name="import_in_collection">In collection “%1$s”</string>
     <string name="sort_label">Sort: %1$s</string>
     <string name="sort_near_me">Near me</string>
     <string name="library_away">%1$s away</string>
@@ -73,10 +125,6 @@
     <string name="sort_stars">Stars</string>
     <string name="sort_length">Length</string>
     <string name="sort_last_ridden">Last ridden</string>
-    <string name="stars_any">Stars: any</string>
-    <string name="stars_min">Stars: %1$d+</string>
-    <string name="stars_option_any">Any</string>
-    <string name="stars_option_min">%1$d or more</string>
     <string name="route_loop">Loop</string>
 
     <!-- Route detail -->

@@ -6,6 +6,7 @@ import io.github.lrosa2.singletrail.backup.BackupArchive
 import io.github.lrosa2.singletrail.backup.BackupExporter
 import io.github.lrosa2.singletrail.backup.BackupRestorer
 import io.github.lrosa2.singletrail.backup.LibraryRestoreTarget
+import io.github.lrosa2.singletrail.data.collections.CollectionRepository
 import io.github.lrosa2.singletrail.data.db.SingletrailDatabase
 import io.github.lrosa2.singletrail.data.gpx.androidGpxReader
 import io.github.lrosa2.singletrail.data.importing.ContentGpxSource
@@ -40,6 +41,7 @@ class AppContainer(context: Context) {
     val log = AppLog(context.filesDir)
     val database: SingletrailDatabase = SingletrailDatabase.open(context)
     val routes = RouteRepository(database, context.filesDir, { gpxReader.read(it) })
+    val collections = CollectionRepository(database)
     val rides = RideRepository(database, context.filesDir)
     val settings = SettingsStore(context)
     val importer = ImportCoordinator(
@@ -52,13 +54,14 @@ class AppContainer(context: Context) {
         appScope,
         archives = ArchiveSupport(
             open = { BackupArchive.open(it, { input -> gpxReader.read(input) }) },
-            restorer = BackupRestorer(LibraryRestoreTarget(routes, rides, settings)),
+            restorer = BackupRestorer(LibraryRestoreTarget(routes, rides, settings, collections)),
             ownerId = settings::backupOwner,
         ),
         log = { log.log("Import", it) },
+        collections = collections,
     )
-    val backups = BackupExporter(routes, rides, settings, BuildConfig.VERSION_NAME)
-    val watchedFolder = WatchedFolder(context.contentResolver, settings, importer, routes, database.watchedFiles(), { gpxReader.read(it) })
+    val backups = BackupExporter(routes, rides, settings, collections, BuildConfig.VERSION_NAME)
+    val watchedFolder = WatchedFolder(context.contentResolver, settings, importer, routes, database.watchedFiles(), { gpxReader.read(it) }, collections = collections)
     val rideController = RideController(context.applicationContext, rides, routes, appScope)
 
     /** Offline maps live in app-specific external storage (spec §8.3), next to the download folder. */
@@ -91,5 +94,10 @@ class SingletrailApp : Application() {
         container = AppContainer(this)
         container.log.installCrashHandler()
         container.launchInBackground { container.log.recordExitReasons(this) }
+        // Routes stored before schema v2 get their "near me" outline once, in the background.
+        container.launchInBackground {
+            val filled = container.routes.fillMissingOutlines()
+            if (filled > 0) container.log.log("Library", "Added the near-me outline to $filled routes")
+        }
     }
 }

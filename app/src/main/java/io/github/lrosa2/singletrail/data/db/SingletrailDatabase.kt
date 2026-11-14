@@ -1,6 +1,7 @@
 package io.github.lrosa2.singletrail.data.db
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Insert
@@ -9,7 +10,10 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
 import androidx.room.Update
+import io.github.lrosa2.singletrail.nav.TrackOutline
 import kotlinx.coroutines.flow.Flow
 
 @Database(
@@ -21,20 +25,40 @@ import kotlinx.coroutines.flow.Flow
         WatchedFileEntity::class,
         RouteTombstoneEntity::class,
         MapFileEntity::class,
+        CollectionEntity::class,
+        RouteCollectionEntity::class,
     ],
-    version = 1,
+    version = 3,
     exportSchema = true,
+    autoMigrations = [
+        // v2: routes.outline, filled in afterwards by RouteRepository.fillMissingOutlines.
+        AutoMigration(from = 1, to = 2),
+        // v3: collections and route_collections (new tables only, spec D48).
+        AutoMigration(from = 2, to = 3),
+    ],
 )
+@TypeConverters(Converters::class)
 abstract class SingletrailDatabase : RoomDatabase() {
     abstract fun routes(): RouteDao
     abstract fun rides(): RideDao
     abstract fun watchedFiles(): WatchedFileDao
     abstract fun maps(): MapDao
+    abstract fun collections(): CollectionDao
 
     companion object {
         fun open(context: Context): SingletrailDatabase =
             Room.databaseBuilder(context, SingletrailDatabase::class.java, "singletrail.db").build()
     }
+}
+
+/** Column types Room doesn't know. */
+class Converters {
+    @TypeConverter
+    fun outlineToText(outline: TrackOutline?): String? = outline?.encode()
+
+    /** An unreadable outline counts as missing: near me then measures to the route's ends. */
+    @TypeConverter
+    fun textToOutline(text: String?): TrackOutline? = text?.let { runCatching { TrackOutline.decode(it) }.getOrNull() }
 }
 
 @Dao
@@ -78,6 +102,13 @@ abstract class RouteDao {
 
     @Query("SELECT * FROM routes ORDER BY importedAt")
     abstract suspend fun all(): List<RouteEntity>
+
+    @Query("SELECT * FROM routes WHERE outline IS NULL")
+    abstract suspend fun withoutOutline(): List<RouteEntity>
+
+    /** Matched on the file too, so a route whose geometry was replaced meanwhile keeps its new outline. */
+    @Query("UPDATE routes SET outline = :outline WHERE id = :id AND gpxPath = :gpxPath")
+    abstract suspend fun setOutline(id: String, gpxPath: String, outline: TrackOutline): Int
 
     @Query("SELECT COUNT(*) FROM route_tombstones WHERE geometryHash IN (:hashes)")
     abstract suspend fun tombstoneCount(hashes: List<String>): Int
@@ -231,4 +262,57 @@ abstract class RideDao {
 
     @Query("UPDATE routes SET lastRiddenAt = :at WHERE id = :routeId")
     protected abstract suspend fun markRidden(routeId: String, at: Long)
+}
+
+/** A collection and how many routes are in it (spec §8.1). */
+data class CollectionCount(val id: String, val name: String, val routes: Int)
+
+@Dao
+abstract class CollectionDao {
+    @Query(
+        """SELECT c.id AS id, c.name AS name, COUNT(rc.routeId) AS routes FROM collections c
+           LEFT JOIN route_collections rc ON rc.collectionId = c.id
+           GROUP BY c.id ORDER BY c.name COLLATE NOCASE""",
+    )
+    abstract fun observeCounts(): Flow<List<CollectionCount>>
+
+    @Query("SELECT * FROM route_collections")
+    abstract fun observeMemberships(): Flow<List<RouteCollectionEntity>>
+
+    @Query(
+        """SELECT c.* FROM collections c JOIN route_collections rc ON rc.collectionId = c.id
+           WHERE rc.routeId = :routeId ORDER BY c.name COLLATE NOCASE""",
+    )
+    abstract fun observeForRoute(routeId: String): Flow<List<CollectionEntity>>
+
+    @Query("SELECT * FROM collections ORDER BY name COLLATE NOCASE")
+    abstract suspend fun all(): List<CollectionEntity>
+
+    @Query("SELECT * FROM route_collections")
+    abstract suspend fun memberships(): List<RouteCollectionEntity>
+
+    @Insert
+    abstract suspend fun insert(collection: CollectionEntity)
+
+    @Query("UPDATE collections SET name = :name WHERE id = :id")
+    abstract suspend fun rename(id: String, name: String)
+
+    @Query("DELETE FROM collections WHERE id = :id")
+    abstract suspend fun delete(id: String)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun addMembers(rows: List<RouteCollectionEntity>)
+
+    @Query("DELETE FROM route_collections WHERE collectionId = :collectionId AND routeId IN (:routeIds)")
+    abstract suspend fun removeMembers(collectionId: String, routeIds: List<String>)
+
+    /** Puts the route in exactly [collectionIds]; memberships it keeps keep their date. */
+    @Transaction
+    open suspend fun setForRoute(routeId: String, collectionIds: List<String>, now: Long) {
+        removeOthers(routeId, collectionIds)
+        addMembers(collectionIds.map { RouteCollectionEntity(routeId, it, now) })
+    }
+
+    @Query("DELETE FROM route_collections WHERE routeId = :routeId AND collectionId NOT IN (:keep)")
+    protected abstract suspend fun removeOthers(routeId: String, keep: List<String>)
 }

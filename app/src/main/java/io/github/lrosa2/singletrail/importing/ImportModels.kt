@@ -65,6 +65,15 @@ interface RouteLibrary {
     suspend fun replace(id: String, route: NewRoute)
 }
 
+/** What import needs to group routes into collections (spec §8.4 step 7, D48). */
+interface ImportCollections {
+    /** Collection names, A–Z. */
+    suspend fun names(): List<String>
+
+    /** Adds [routeIds] to the collection named [name] (ignoring case), creating it when missing, even for no routes. */
+    suspend fun addTo(name: String, routeIds: List<String>)
+}
+
 data class LibraryRoute(val id: String, val name: String)
 
 /** A parsed, prepared route ready to be stored. */
@@ -95,7 +104,7 @@ data class RoutePreview(
     val large: Boolean,
 )
 
-enum class ImportAnswer { ADD, SPLIT, JOIN, UPDATE, KEEP_BOTH, RESTORE, ROUTES_ONLY, CANCEL }
+enum class ImportAnswer { ADD, SPLIT, JOIN, UPDATE, KEEP_BOTH, RESTORE, ROUTES_ONLY, COLLECT, CANCEL }
 
 /** A decision the import queue waits for before it continues. */
 sealed interface ImportQuestion {
@@ -134,6 +143,11 @@ sealed interface ImportQuestion {
             listOf(ImportAnswer.ROUTES_ONLY, ImportAnswer.RESTORE, ImportAnswer.CANCEL)
         }
     }
+
+    /** Several files imported at once (spec §8.4 step 7): put their [routes] in a collection? */
+    data class PutInCollection(override val fileName: String, val routes: Int, val existing: List<String>) : ImportQuestion {
+        override val options = listOf(ImportAnswer.COLLECT, ImportAnswer.CANCEL)
+    }
 }
 
 /** Why a file or track couldn't be imported. */
@@ -151,12 +165,22 @@ sealed interface ImportOutcome {
     data class Restored(val summary: RestoreSummary) : ImportOutcome
 }
 
+/** The route an outcome added, updated or found; null otherwise. */
+fun routeIdOf(outcome: ImportOutcome): String? = when (outcome) {
+    is ImportOutcome.Added -> outcome.routeId
+    is ImportOutcome.Updated -> outcome.routeId
+    is ImportOutcome.AlreadyInLibrary -> outcome.routeId
+    else -> null
+}
+
 data class ImportResult(
     val fileName: String,
     val routeName: String?,
     val outcome: ImportOutcome,
     /** The point count of a route added or updated despite being above the warning limit (spec §5.2). */
     val largePoints: Int? = null,
+    /** The collection the route's zip put it in (spec §8.4 step 7); null otherwise. */
+    val collection: String? = null,
 )
 
 data class ImportState(

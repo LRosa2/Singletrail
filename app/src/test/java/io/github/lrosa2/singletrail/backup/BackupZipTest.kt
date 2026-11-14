@@ -178,4 +178,29 @@ class BackupZipTest {
             assertThrows<io.github.lrosa2.singletrail.gpx.GpxParseException> { archive.gpx("x.gpx") }
         }
     }
+
+    @Test
+    fun `a routes zip shared from a collection carries its name`() {
+        val file = File(dir, "shared.zip")
+        file.outputStream().use { BackupZip.writeRoutes(it, "t", 1, listOf("East" to east), "Waldegg loops") }
+
+        open(file).use { assertEquals("Waldegg loops", it.manifest?.collection) }
+    }
+
+    @Test
+    fun `a full backup keeps collections and each route's collection names`() {
+        val file = File(dir, "full.zip")
+        val route = BackupRoute("r1", "East", importedAt = 1, geometryHash = "h", file = "routes/r1.gpx", collections = listOf("komoot", "To ride"))
+        file.outputStream().use {
+            BackupZip.writeFull(
+                it, BackupManifest(kind = BackupManifest.KIND_FULL, app = "t", createdAt = 1), listOf(route), { east },
+                emptyList(), { east }, null, listOf(BackupCollection("komoot", 5), BackupCollection("Empty", 6)),
+            )
+        }
+
+        open(file).use { archive ->
+            assertEquals(listOf("komoot", "To ride"), archive.routes().single().collections)
+            assertEquals(listOf(BackupCollection("komoot", 5), BackupCollection("Empty", 6)), archive.collections())
+        }
+    }
 }

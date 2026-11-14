@@ -13,6 +13,7 @@ import io.github.lrosa2.singletrail.gpx.GpxDocument
 import io.github.lrosa2.singletrail.importing.FolderFile
 import io.github.lrosa2.singletrail.importing.FolderLibrary
 import io.github.lrosa2.singletrail.importing.FolderSource
+import io.github.lrosa2.singletrail.importing.ImportCollections
 import io.github.lrosa2.singletrail.importing.ImportCoordinator
 import io.github.lrosa2.singletrail.importing.NewRoute
 import io.github.lrosa2.singletrail.importing.WatchedFile
@@ -57,10 +58,11 @@ class TreeFolderSource(private val resolver: ContentResolver, private val tree: 
 
     override suspend fun list(): List<FolderFile> = withContext(Dispatchers.IO) {
         val found = ArrayList<FolderFile>()
-        var level = listOf(DocumentsContract.getTreeDocumentId(tree))
+        // Each folder to list with its name; the top level has none, so its files join no collection.
+        var level = listOf<Pair<String, String?>>(DocumentsContract.getTreeDocumentId(tree) to null)
         for (depth in 0..MAX_DEPTH) {
-            val next = ArrayList<String>()
-            for (parent in level) {
+            val next = ArrayList<Pair<String, String?>>()
+            for ((parent, folderName) in level) {
                 val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent)
                 val columns = arrayOf(
                     DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -72,9 +74,9 @@ class TreeFolderSource(private val resolver: ContentResolver, private val tree: 
                         val id = c.getString(0) ?: continue
                         val name = c.getString(1) ?: continue
                         if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
-                            next += id
+                            next += id to name
                         } else if (name.endsWith(".gpx", ignoreCase = true)) {
-                            found += FolderFile(DocumentsContract.buildDocumentUriUsingTree(tree, id).toString(), name)
+                            found += FolderFile(DocumentsContract.buildDocumentUriUsingTree(tree, id).toString(), name, folderName)
                             if (found.size >= MAX_FILES) return@withContext found
                         }
                     }
@@ -120,6 +122,8 @@ class WatchedFolder(
     private val dao: WatchedFileDao,
     private val readGpx: (InputStream) -> GpxDocument,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Subfolders become collections (spec §8.4 step 7). */
+    private val collections: ImportCollections? = null,
 ) {
     @Volatile
     private var lastScan = 0L
@@ -196,6 +200,7 @@ class WatchedFolder(
         RepositoryFolderLibrary(routes),
         readGpx,
         clock = clock,
+        collections = collections,
     )
 
     private companion object {

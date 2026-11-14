@@ -5,6 +5,7 @@ import io.github.lrosa2.singletrail.data.db.WaypointEntity
 import io.github.lrosa2.singletrail.gpx.GpxTrack
 import io.github.lrosa2.singletrail.importing.NewRoute
 import io.github.lrosa2.singletrail.nav.RoutePoint
+import io.github.lrosa2.singletrail.nav.TrackOutline
 
 /** The track's points as navigation input. */
 fun GpxTrack.routePoints(): List<RoutePoint> = points.map { RoutePoint(it.lat, it.lon, it.elevation) }
@@ -46,6 +47,7 @@ fun NewRoute.toEntity(id: String, gpxPath: String, now: Long): RouteEntity {
         updatedAt = now,
         lastRiddenAt = null,
         turnsAlgoVersion = 0,
+        outline = TrackOutline.of(points),
     )
 }
 

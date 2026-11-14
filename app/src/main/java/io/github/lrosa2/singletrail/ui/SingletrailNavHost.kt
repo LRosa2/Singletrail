@@ -53,6 +53,7 @@ import io.github.lrosa2.singletrail.ui.rides.RidesScreen
 import io.github.lrosa2.singletrail.ui.rides.RidesViewModel
 import io.github.lrosa2.singletrail.ui.route.RouteDetailScreen
 import io.github.lrosa2.singletrail.ui.route.RouteDetailViewModel
+import io.github.lrosa2.singletrail.ui.collections.ManageCollectionsScreen
 import io.github.lrosa2.singletrail.ui.settings.IgnoredFilesScreen
 import io.github.lrosa2.singletrail.ui.settings.SettingsScreen
 import kotlinx.serialization.Serializable
@@ -81,6 +82,9 @@ data object MapsKey : NavKey
 @Serializable
 data class RideDetailKey(val id: String) : NavKey
 
+@Serializable
+data object CollectionsKey : NavKey
+
 @Composable
 fun SingletrailNavHost(container: AppContainer) {
     val backStack = rememberNavBackStack(LibraryKey)
@@ -89,6 +93,7 @@ fun SingletrailNavHost(container: AppContainer) {
     val openRide: () -> Unit = { if (backStack.lastOrNull() != RideKey) backStack.add(RideKey) }
     val openRideDetail: (String) -> Unit = { id -> if (backStack.lastOrNull() != RideDetailKey(id)) backStack.add(RideDetailKey(id)) }
     val openMaps: () -> Unit = { if (backStack.lastOrNull() != MapsKey) backStack.add(MapsKey) }
+    val openCollections: () -> Unit = { if (backStack.lastOrNull() != CollectionsKey) backStack.add(CollectionsKey) }
     // Picked files are imported straight away; only shared files get a preview first (spec §3, journey 1).
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         container.importer.enqueue(uris.map { ImportRequest(it.toString(), SourceKind.PICKER, confirm = false) })
@@ -142,7 +147,7 @@ fun SingletrailNavHost(container: AppContainer) {
                 entryProvider = entryProvider {
                     entry<LibraryKey> {
                         val libraryModel = viewModel {
-                            LibraryViewModel(container.routes, container.rides, container.settings, BuildConfig.VERSION_NAME)
+                            LibraryViewModel(container.routes, container.rides, container.collections, container.settings, BuildConfig.VERSION_NAME)
                         }
                         val nearMe = rememberNearMe(libraryModel::locating, libraryModel::located)
                         LibraryScreen(
@@ -150,8 +155,10 @@ fun SingletrailNavHost(container: AppContainer) {
                             onOpenRoute = openRoute,
                             // Some providers report .gpx files as octet-stream or text, so don't filter by type here.
                             onImport = { picker.launch(arrayOf("*/*")) },
+                            onManageCollections = openCollections,
                             menu = listOf(
                                 stringResource(R.string.action_import_link) to importLink,
+                                stringResource(R.string.action_manage_collections) to openCollections,
                                 stringResource(R.string.action_ride_history) to { backStack.add(RidesKey) },
                                 stringResource(R.string.action_maps) to openMaps,
                                 stringResource(R.string.action_back_up) to backUp,
@@ -164,7 +171,7 @@ fun SingletrailNavHost(container: AppContainer) {
                     }
                     entry<RouteKey> { key ->
                         RouteDetailScreen(
-                            viewModel = viewModel { RouteDetailViewModel(container.routes, container.rides, container.maps.maps, key.id) },
+                            viewModel = viewModel { RouteDetailViewModel(container.routes, container.rides, container.collections, container.maps.maps, key.id) },
                             onBack = back,
                             onRide = { route, reversed, simulate ->
                                 if (riding) openRide() else startRide(RideRequest(route.id, route.name, reversed, simulate))
@@ -207,6 +214,9 @@ fun SingletrailNavHost(container: AppContainer) {
                     }
                     entry<MapsKey> {
                         MapsScreen(container.maps, onBack = back)
+                    }
+                    entry<CollectionsKey> {
+                        ManageCollectionsScreen(container.collections, onBack = back)
                     }
                     entry<IgnoredFilesKey> {
                         IgnoredFilesScreen(container.watchedFolder, onBack = back)

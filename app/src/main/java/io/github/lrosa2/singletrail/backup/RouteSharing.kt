@@ -12,7 +12,18 @@ import java.io.File
 object RouteSharing {
     class Prepared(val files: List<File>, val mimeType: String)
 
-    suspend fun prepare(routes: List<RouteEntity>, repository: RouteRepository, dir: File, appVersion: String, now: Long): Prepared {
+    /** The zip's file name: the collection's when sharing from one (spec §8.5). */
+    fun zipName(collection: String?): String =
+        collection?.let { FileNames.safe(it, "zip", fallback = "Singletrail routes") } ?: "Singletrail routes.zip"
+
+    suspend fun prepare(
+        routes: List<RouteEntity>,
+        repository: RouteRepository,
+        dir: File,
+        appVersion: String,
+        now: Long,
+        collection: String? = null,
+    ): Prepared {
         require(routes.isNotEmpty()) { "No routes to share" }
         val docs = routes.map { it.name to repository.sharedGpx(it) }
         return withContext(Dispatchers.IO) {
@@ -22,8 +33,8 @@ object RouteSharing {
                 file.bufferedWriter().use { GpxWriter.write(doc, it) }
                 Prepared(listOf(file), "application/gpx+xml")
             } else {
-                val file = File(dir, "Singletrail routes.zip")
-                file.outputStream().buffered().use { BackupZip.writeRoutes(it, appVersion, now, docs) }
+                val file = File(dir, zipName(collection))
+                file.outputStream().buffered().use { BackupZip.writeRoutes(it, appVersion, now, docs, collection) }
                 Prepared(listOf(file), "application/zip")
             }
         }

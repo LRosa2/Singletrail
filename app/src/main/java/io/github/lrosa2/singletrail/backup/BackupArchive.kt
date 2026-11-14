@@ -47,6 +47,10 @@ class BackupArchive private constructor(
 
     fun rides(): List<BackupRide> = entries["rides.json"]?.let { json(it, ListSerializer(BackupRide.serializer())) }.orEmpty()
 
+    /** The backup's collections; none in backups made before collections existed. */
+    fun collections(): List<BackupCollection> =
+        entries["collections.json"]?.let { json(it, ListSerializer(BackupCollection.serializer())) }.orEmpty()
+
     fun settings(): BackupSettings? = entries["settings.json"]?.let { json(it, BackupSettings.serializer()) }
 
     /** GPX entries in zip order: the routes of a routes zip. */
@@ -96,7 +100,7 @@ class BackupArchive private constructor(
     }
 
     companion object {
-        private val allowedJson = setOf("manifest.json", "routes.json", "rides.json", "settings.json")
+        private val allowedJson = setOf("manifest.json", "routes.json", "rides.json", "settings.json", "collections.json")
 
         fun open(file: File, readGpx: (InputStream) -> GpxDocument, limits: ArchiveLimits = ArchiveLimits()): BackupArchive {
             val zip = try {

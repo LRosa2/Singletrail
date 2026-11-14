@@ -47,6 +47,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.lrosa2.singletrail.data.db.CollectionEntity
+import io.github.lrosa2.singletrail.ui.collections.CollectionChecklistDialog
 import io.github.lrosa2.singletrail.R
 import io.github.lrosa2.singletrail.data.db.RideEntity
 import io.github.lrosa2.singletrail.data.db.RouteEntity
@@ -73,6 +75,9 @@ fun RouteDetailScreen(
     val geometry by viewModel.geometry.collectAsStateWithLifecycle()
     val uncovered by viewModel.uncoveredMeters.collectAsStateWithLifecycle()
     val rides by viewModel.rides.collectAsStateWithLifecycle()
+    val inCollections by viewModel.inCollections.collectAsStateWithLifecycle()
+    val allCollections by viewModel.allCollections.collectAsStateWithLifecycle()
+    var editingCollections by rememberSaveable { mutableStateOf(false) }
     var deleteRides by rememberSaveable { mutableStateOf(false) }
     val route = (load as? RouteLoad.Loaded)?.route
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -145,7 +150,10 @@ fun RouteDetailScreen(
                     Modifier.padding(24.dp),
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                is RouteLoad.Loaded -> RouteDetails(current.route, geometry, uncovered, viewModel::setRating, rides, onOpenRide, onGetMaps)
+                is RouteLoad.Loaded -> RouteDetails(
+                    current.route, geometry, uncovered, viewModel::setRating, rides, onOpenRide, onGetMaps,
+                    inCollections, onEditCollections = { editingCollections = true },
+                )
             }
         }
     }
@@ -155,6 +163,18 @@ fun RouteDetailScreen(
             editing = false
             viewModel.edit(name, description)
         })
+    }
+    if (editingCollections && route != null) {
+        CollectionChecklistDialog(
+            title = stringResource(R.string.detail_collections),
+            collections = allCollections,
+            initiallyChecked = inCollections.map { it.id }.toSet(),
+            onSave = { ids, newName ->
+                editingCollections = false
+                viewModel.setCollections(ids, newName)
+            },
+            onDismiss = { editingCollections = false },
+        )
     }
     if (confirmingDelete && route != null) {
         AlertDialog(
@@ -197,6 +217,8 @@ private fun RouteDetails(
     rides: List<RideEntity>,
     onOpenRide: (String) -> Unit,
     onGetMaps: () -> Unit,
+    inCollections: List<CollectionEntity>,
+    onEditCollections: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -240,6 +262,17 @@ private fun RouteDetails(
 
         Section(stringResource(R.string.detail_description)) {
             Text(route.description ?: stringResource(R.string.detail_no_description))
+        }
+
+        Section(stringResource(R.string.detail_collections)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (inCollections.isEmpty()) stringResource(R.string.detail_no_collections)
+                    else inCollections.joinToString(", ") { it.name },
+                    Modifier.weight(1f),
+                )
+                TextButton(onClick = onEditCollections) { Text(stringResource(R.string.action_edit_collections)) }
+            }
         }
 
         Section(stringResource(R.string.detail_rides)) {

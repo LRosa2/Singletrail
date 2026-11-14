@@ -27,6 +27,9 @@ interface RestoreTarget {
 
     /** Takes over the backup's settings; only when everything is restored. */
     suspend fun applySettings(settings: BackupSettings) {}
+
+    /** Puts routes in the collection named [name], creating it even for no routes (spec §8.5 merge rules). */
+    suspend fun collect(name: String, routeIds: List<String>) {}
 }
 
 data class RestoreSummary(
@@ -67,6 +70,23 @@ class BackupRestorer(
                 val route = NewRoute(r.name, r.description, SourceKind.BACKUP, r.sourceRef, track, doc.waypoints, prepared, hashes)
                 localIds[r.id] = target.addRoute(route, r.rating?.takeIf { it in 1..5 }, r.importedAt, r.lastRiddenAt)
                 added++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed++
+            }
+        }
+
+        // Collections are matched by name; memberships are added, never removed (spec §8.5).
+        val members = LinkedHashMap<String, MutableList<String>>()
+        archive.collections().forEach { members.getOrPut(it.name) { ArrayList() } }
+        for (r in archive.routes()) {
+            val local = localIds[r.id] ?: continue
+            r.collections.forEach { members.getOrPut(it) { ArrayList() } += local }
+        }
+        for ((name, ids) in members) {
+            try {
+                target.collect(name, ids)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

@@ -20,10 +20,12 @@ object BackupZip {
         rides: List<BackupRide>,
         rideGpx: (BackupRide) -> GpxDocument,
         settings: BackupSettings?,
+        collections: List<BackupCollection> = emptyList(),
     ) {
         val zip = ZipOutputStream(out)
         zip.text("manifest.json", BackupJson.encodeToString(BackupManifest.serializer(), manifest))
         zip.text("routes.json", BackupJson.encodeToString(ListSerializer(BackupRoute.serializer()), routes))
+        zip.text("collections.json", BackupJson.encodeToString(ListSerializer(BackupCollection.serializer()), collections))
         zip.text("rides.json", BackupJson.encodeToString(ListSerializer(BackupRide.serializer()), rides))
         settings?.let { zip.text("settings.json", BackupJson.encodeToString(BackupSettings.serializer(), it)) }
         routes.forEach { zip.text(it.file, GpxWriter.writeToString(routeGpx(it))) }
@@ -32,9 +34,9 @@ object BackupZip {
     }
 
     /** Several routes to share (spec §8.5): GPX only, named after the routes; no rides, no stars. */
-    fun writeRoutes(out: OutputStream, app: String, createdAt: Long, routes: List<Pair<String, GpxDocument>>) {
+    fun writeRoutes(out: OutputStream, app: String, createdAt: Long, routes: List<Pair<String, GpxDocument>>, collection: String? = null) {
         val zip = ZipOutputStream(out)
-        val manifest = BackupManifest(kind = BackupManifest.KIND_ROUTES, app = app, createdAt = createdAt, routes = routes.size)
+        val manifest = BackupManifest(kind = BackupManifest.KIND_ROUTES, app = app, createdAt = createdAt, routes = routes.size, collection = collection)
         zip.text("manifest.json", BackupJson.encodeToString(BackupManifest.serializer(), manifest))
         val names = FileNames.Unique()
         routes.forEach { (name, doc) -> zip.text(names.next(name, "gpx"), GpxWriter.writeToString(doc)) }

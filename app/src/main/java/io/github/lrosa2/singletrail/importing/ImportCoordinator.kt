@@ -3,6 +3,7 @@ package io.github.lrosa2.singletrail.importing
 import io.github.lrosa2.singletrail.backup.ArchiveException
 import io.github.lrosa2.singletrail.backup.BackupArchive
 import io.github.lrosa2.singletrail.backup.BackupKind
+import io.github.lrosa2.singletrail.data.collections.CollectionNames
 import io.github.lrosa2.singletrail.data.routes.routePoints
 import io.github.lrosa2.singletrail.gpx.GpxDocument
 import io.github.lrosa2.singletrail.gpx.GpxLimits
@@ -47,23 +48,29 @@ class ImportCoordinator(
     private val largeRoutePoints: Int = GpxLimits.DEFAULT.warnPoints,
     /** Nanoseconds, for the time each file took in the log (spec §10: < 3 s for 50,000 points). */
     private val clock: () -> Long = System::nanoTime,
+    /** Groups imported routes into collections (spec §8.4 step 7); without it nothing is grouped. */
+    private val collections: ImportCollections? = null,
 ) {
     private val _state = MutableStateFlow(ImportState())
     val state: StateFlow<ImportState> = _state.asStateFlow()
 
     private sealed interface Work {
         data class File(val request: ImportRequest) : Work
+        /** Files picked or shared together: afterwards their routes may go into a collection. */
+        data class Batch(val requests: List<ImportRequest>) : Work
         class Job(val name: String, val run: suspend () -> List<ImportResult>) : Work
     }
 
     private val queue = Channel<Work>(Channel.UNLIMITED)
     private val pending = AtomicReference<Pair<ImportQuestion, CompletableDeferred<ImportAnswer>>?>(null)
+    private val collectionName = AtomicReference<String?>(null)
 
     init {
         scope.launch {
             for (work in queue) {
                 when (work) {
                     is Work.File -> process(work.request)
+                    is Work.Batch -> processBatch(work.requests)
                     is Work.Job -> runJob(work)
                 }
             }
@@ -73,7 +80,7 @@ class ImportCoordinator(
     fun enqueue(requests: List<ImportRequest>) {
         if (requests.isEmpty()) return
         _state.update { it.copy(queued = it.queued + requests.size) }
-        requests.forEach { queue.trySend(Work.File(it)) }
+        if (requests.size == 1) queue.trySend(Work.File(requests.single())) else queue.trySend(Work.Batch(requests))
     }
 
     /**
@@ -106,11 +113,45 @@ class ImportCoordinator(
         open.second.complete(answer)
     }
 
+    /** Answers [ImportQuestion.PutInCollection] with a collection name, new or existing. */
+    fun putInCollection(name: String) {
+        if (pending.get()?.first !is ImportQuestion.PutInCollection || name.isBlank()) return
+        collectionName.set(name)
+        answer(ImportAnswer.COLLECT)
+    }
+
+    private suspend fun processBatch(requests: List<ImportRequest>) {
+        val results = requests.flatMap { process(it) }
+        val group = collections ?: return
+        // Zips grouped their own routes already.
+        val ids = results.filter { it.collection == null }.mapNotNull { routeIdOf(it.outcome) }.distinct()
+        if (ids.size < 2) return
+        val existing = grouping { group.names() } ?: return
+        collectionName.set(null)
+        if (ask(ImportQuestion.PutInCollection("", ids.size, existing)) != ImportAnswer.COLLECT) return
+        val name = collectionName.getAndSet(null) ?: return
+        grouping { group.addTo(name, ids) } ?: return
+        log("Import: ${ids.size} routes put in a collection")
+    }
+
+    /**
+     * Grouping into a collection is a side effect of importing: when it fails the routes are still
+     * imported, the failure is only logged, and the queue goes on (spec §8.4).
+     */
+    private suspend fun <T : Any> grouping(action: suspend () -> T): T? = try {
+        action()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log("Import: putting routes in a collection failed: ${e.javaClass.simpleName}")
+        null
+    }
+
     fun clearResults() {
         _state.update { it.copy(results = emptyList()) }
     }
 
-    private suspend fun process(request: ImportRequest) {
+    private suspend fun process(request: ImportRequest): List<ImportResult> {
         // Named before parsing, so a file that fails is still reported by its own name.
         val fileName = try {
             source.displayName(request)
@@ -134,6 +175,7 @@ class ImportCoordinator(
         val millis = (clock() - started) / 1_000_000
         results.forEach { log("Import ${request.kind} $fileName: ${it.outcome} in $millis ms") }
         _state.update { it.copy(working = null, results = it.results + results) }
+        return results
     }
 
     private suspend fun importFile(request: ImportRequest, fileName: String): List<ImportResult> {
@@ -200,7 +242,7 @@ class ImportCoordinator(
     private suspend fun importRoutesZip(archive: BackupArchive, request: ImportRequest, fileName: String): List<ImportResult> {
         val entries = archive.gpxEntries()
         if (entries.isEmpty()) return listOf(ImportResult(fileName, null, ImportOutcome.Failed(ImportProblem.NO_TRACK)))
-        return entries.flatMap { entry ->
+        val results = entries.flatMap { entry ->
             val entryName = entry.substringAfterLast('/')
             val doc = try {
                 withContext(work) { archive.gpx(entry) }
@@ -209,6 +251,12 @@ class ImportCoordinator(
             }
             importDocument(request.copy(confirm = false), entryName, doc)
         }
+        // A zip is a collection (spec §8.4 step 7), including routes that were already in the library.
+        val name = CollectionNames.clean(archive.manifest?.collection) ?: CollectionNames.fromZip(fileName) ?: return results
+        val group = collections ?: return results
+        val ids = results.mapNotNull { routeIdOf(it.outcome) }.distinct()
+        if (ids.isNotEmpty() && grouping { group.addTo(name, ids) } == null) return results
+        return results.map { it.copy(collection = name) }
     }
 
     private suspend fun importDocument(request: ImportRequest, fileName: String, doc: GpxDocument): List<ImportResult> {
@@ -218,15 +266,15 @@ class ImportCoordinator(
 
         val candidates = if (tracks.size == 1) {
             val t = tracks.single()
-            listOf(Candidate(t, t.name ?: doc.name ?: baseName, t.description ?: doc.description, doc.waypoints))
+            listOf(Candidate(t, RouteNames.clean(t.name) ?: RouteNames.clean(doc.name) ?: baseName, t.description ?: doc.description, doc.waypoints))
         } else {
-            when (ask(ImportQuestion.MultipleTracks(fileName, tracks.map { it.name }))) {
+            when (ask(ImportQuestion.MultipleTracks(fileName, tracks.map { RouteNames.clean(it.name) }))) {
                 ImportAnswer.SPLIT -> tracks.mapIndexed { i, t ->
-                    Candidate(t, t.name ?: "$baseName ${i + 1}", t.description, doc.waypoints, nearbyWaypointsOnly = true)
+                    Candidate(t, RouteNames.clean(t.name) ?: "$baseName ${i + 1}", t.description, doc.waypoints, nearbyWaypointsOnly = true)
                 }
                 ImportAnswer.JOIN -> {
                     val joined = doc.joinedTrack()!!
-                    listOf(Candidate(joined, joined.name ?: baseName, joined.description, doc.waypoints))
+                    listOf(Candidate(joined, RouteNames.clean(joined.name) ?: baseName, joined.description, doc.waypoints))
                 }
                 else -> return listOf(ImportResult(fileName, null, ImportOutcome.Skipped))
             }

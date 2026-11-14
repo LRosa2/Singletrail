@@ -25,7 +25,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
 **Design principle:** lighter and simpler than OsmAnd. Every feature must earn its place on a handlebar-mounted phone.
 
 ### Goals (v1)
-- Keep a library of GPX routes with name, description, personal 1–5 stars, elevation profile and stats, distance to start ("near me"), and ride history.
+- Keep a library of GPX routes with name, description, personal 1–5 stars, elevation profile and stats, distance to the nearest point of the route ("near me"), and ride history.
 - Import from Android share / "open with", an in-app file picker, a watched folder, and direct `https` URLs.
 - Guide a ride along a route with a **turn banner + map** view and a **big arrow** view (swipe between them), beep tones, off-route return guidance, start-from-nearest-point, reverse riding, and auto-detected reverse direction.
 - Show offline OpenAndroMaps vector maps with an MTB-oriented theme.
@@ -38,7 +38,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
 - Voice instructions and vibration alerts (beeps only).
 - Any server, account, cloud sync, social features, Strava auto-upload.
 - Online map tiles, bulk tile prefetching.
-- Notes / tags on routes.
+- Notes on routes. (Grouping routes into collections is in: D48.)
 - iOS, Wear OS, bike computers.
 - Commercial distribution.
 
@@ -64,7 +64,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
 1. **Receive a route.** A friend sends a `.gpx` on WhatsApp. Tap it → "Open with Singletrail" → import preview (name, distance, climb, map thumbnail) → *Add to library*.
    - If the route already exists: "Already in library".
    - If it looks like an updated version: "Update existing route / keep both".
-2. **Choose today's ride.** Library sorted by *near me*, filterable by minimum stars. Open a route to see the map, elevation profile, stats, description, your stars, past rides and the map coverage check → *Ride* / *Ride reversed*.
+2. **Choose today's ride.** Library sorted by *near me*, narrowed to a collection and filtered by stars, length, climb, not ridden yet or loops. Open a route to see the map, elevation profile, stats, description, your stars, past rides and the map coverage check → *Ride* / *Ride reversed*.
 3. **Install a map.** Maps screen → *Get maps* opens openandromaps.org in the browser → tap the region's install link → Singletrail confirms region, size and free space → download → unpack → ready. A `.map` file from a PC can also be imported manually.
 4. **Ride.**
    - Tap *Ride* → audio check (test beep).
@@ -324,13 +324,26 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
 
 ### 8.1 Screens
 - **Library:**
-  - Sort by near me, stars, name, length, last ridden; filter by minimum stars.
+  - Chip row: `[Sort ▾] [Collection ▾] [Filters ▾]`.
+  - Sort by near me, stars, name, length, last ridden.
+  - **Collection** (D48): *All routes (66)*, each collection A–Z with its route count, *Not in a collection (n)*, *Manage collections…*. One collection at a time.
+  - **Filters** (D49) open a sheet; the chip shows how many are on ("Filters (2)"):
+    - Minimum stars: any, 1+ … 5.
+    - Length: any, up to 20 km, 20–40 km, over 40 km (≤ 20 000 m, ≤ 40 000 m, more).
+    - Climb: any, up to 500 m, 500–1000 m, over 1000 m (same boundaries). Routes without elevation are hidden while it's on.
+    - *Not ridden yet*: routes with no "last ridden" date.
+    - *Loops only*.
+    - *Clear* and *Done*.
   - Search over names and descriptions. Every word must match; case, accents and the German "ae/oe/ue" spellings don't matter ("hoernli" finds "Hörnli"). Not remembered across restarts.
+  - Collection, filters, search and sort combine. Sort, collection and filters are remembered across restarts; a remembered collection that was deleted falls back to *All routes*. An empty result says so and offers *Show all routes* (clears collection, filters and search).
+  - Selection mode (long-press): *Share*, *Add to collection* (checklist of collections plus *New collection…*), and while a collection is chosen, *Remove from "‹name›"*.
   - Import button.
   - Banner "Last export 47 days ago".
+- **Manage collections** (from the Collection chip and the library menu): collections with their route counts; *New collection*, *Rename*, *Delete* (asks first and says the routes stay in the library). Names are unique, ignoring case.
 - **Route detail:**
   - Map preview, stats, elevation profile (custom Canvas, no chart library), description (plain text), stars.
   - Coverage check; ride history for this route.
+  - *Collections*: the route's collections, with *Edit* (the same checklist as in selection mode).
   - Actions: *Ride*, *Ride reversed*, *Share route*, *Edit name/description*, *Delete*.
 - **Ride history:** all rides. **Ride detail:** track on the map, stats, *Export GPX*, *Delete*.
 - **Maps** (see §7).
@@ -339,22 +352,24 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
   - Off-route threshold, beep volume, dim level, compass on/off, map orientation.
   - Low-power threshold, watched folder, debug trace opt-in, battery helper.
   - *Delete all ride history*, *Full backup*, *Restore*.
-- **"Near me":** one location request when the library opens (permission while in use), never continuous.
+- **"Near me":** one location request when the library opens (permission while in use), never continuous. The distance is a straight line to the nearest point anywhere along the route, where a ride would join it (D14), measured on an outline stored with each route (D46).
 
 ### 8.2 Data model (Room)
 
 | Table | Key columns |
 |---|---|
-| `routes` | `id` (UUID), `name`, `description`, `sourceKind` (share/picker/folder/url/backup), `sourceRef`, `geometryHash`, `geometryHashReversed`, `gpxPath`, `pointCount`, `distanceM`, `ascentM`, `descentM`, `minEleM`, `maxEleM`, `hasElevation`, `start/end lat-lon`, `bbox`, `isLoop`, `rating` (1–5, nullable), `importedAt`, `updatedAt`, `lastRiddenAt`, `turnsAlgoVersion` |
+| `routes` | `id` (UUID), `name`, `description`, `sourceKind` (share/picker/folder/url/backup), `sourceRef`, `geometryHash`, `geometryHashReversed`, `gpxPath`, `pointCount`, `distanceM`, `ascentM`, `descentM`, `minEleM`, `maxEleM`, `hasElevation`, `start/end lat-lon`, `bbox`, `isLoop`, `rating` (1–5, nullable), `importedAt`, `updatedAt`, `lastRiddenAt`, `turnsAlgoVersion`, `outline` (the track thinned for near me, D46; null until filled in) |
 | `maneuvers` | `routeId`, `direction` (FWD/REV), `seq`, `distanceAlongM`, `lat`, `lon`, `kind`, `angleDeg`, `groupCount`, `source` (GEOMETRY/JUNCTION) |
 | `waypoints` | `routeId`, `seq`, `name`, `description`, `lat`, `lon`, `ele`, `symbol` |
 | `rides` | `id` (UUID), `routeId` (nullable, `SET NULL`), `routeNameSnapshot`, `direction`, `startMode`, `startedAt`, `endedAt`, `status` (IN_PROGRESS/FINISHED/ABANDONED), `distanceM`, `movingTimeS`, `ascentM`, `trackPath`, `segmentCount` |
 | `watched_files` | `uri`, `lastHash`, `routeId` (nullable), `status` (IMPORTED/IGNORED/ERROR), `lastSeenAt` |
 | `route_tombstones` | `geometryHash`, `deletedAt` (stops deleted routes coming back from the watched folder) |
 | `map_files` | `id`, `displayName`, `path`, `sizeBytes`, `bbox`, `mapDate`, `sourceUrl`, `installedAt` |
+| `collections` | `id` (UUID), `name` (unique, ignoring case), `createdAt` (D48) |
+| `route_collections` | `routeId` (`CASCADE`), `collectionId` (`CASCADE`), `addedAt`; key (`routeId`, `collectionId`). A route can be in several collections; deleting a route or a collection removes only its memberships |
 
-- **Settings:** DataStore.
-- **Schema:** exported (`exportSchema = true`), with tested migrations from v1 on (§12).
+- **Settings:** DataStore. The library's sort, collection and filters are stored there (§8.1).
+- **Schema:** exported (`exportSchema = true`), with tested migrations from v1 on (§12). v2 added `routes.outline` (Room auto-migration); routes stored under v1 get their outline from their GPX copy in the background when the app starts. v3 adds `collections` and `route_collections` (new tables only, Room auto-migration).
 
 ### 8.3 Files
 - `filesDir/routes/<id>.gpx`: normalised copy of the imported GPX, kept for sharing and re-processing. A route updated from a newer file gets a new file (`<id>-<suffix>.gpx`), so the old copy stays intact until the database points at the new one; `gpxPath` always names the current file.
@@ -378,7 +393,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
    - `trk/trkseg/trkpt` → track; multiple segments are joined in order.
    - `rte/rtept` → treated as a track.
    - `wpt` → waypoints.
-   - `name`/`desc` → name/description, HTML stripped.
+   - `name`/`desc` → name/description, HTML stripped. Exporters' boilerplate is dropped from names: komoot's "GPX Download: " prefix (D47).
 3. **Multiple tracks:** ask "Import as N routes / Join into one".
 4. **Identify:**
    - `geometryHash`: SHA-256 of coordinates rounded to 5 decimals, after dropping duplicate points. Also computed for the reversed geometry. Coordinates are rounded to the 7 decimals our GPX writer stores first, so a route keeps its hash through our own export and re-import.
@@ -387,17 +402,27 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
    - **Tombstoned** (watched folder only) → skip silently. *Show ignored files* lists these.
 5. **Prepare:** stats, elevation profile, maneuvers (both directions).
 6. **Store:** route row + GPX file, in one transaction. Temporary files are cleaned on failure.
+7. **Collections** (D48). A route "counts" for its collection when it was added, updated, or found already in the library (exact match); skipped and failed routes don't.
+   - **A zip** (picked, shared, opened, or a route package from a link): its routes go into a collection named after the zip, without `.zip` ("SchweizMobil-MTB-Ostschweiz"). A routes zip whose manifest names a collection (§8.5) uses that name instead. An existing collection of that name (ignoring case) is reused, so importing the same zip again groups routes that are already in the library. No question.
+   - **Several GPX files at once** (picker multi-select, `ACTION_SEND_MULTIPLE`): after the last one, if two or more routes count, the app asks *"Put these N routes in a collection?"*: a new name, an existing collection, or *No*. Zips in the same batch keep their own collections and aren't counted.
+   - **Watched folder:** a file in a subfolder joins a collection named after its own folder ("komoot St. Gallen/x.gpx" → "komoot St. Gallen"); files at the top level join none. No questions, as for the rest of the scan. Files imported before collections existed join when they change; group them by hand otherwise.
+   - **A single file:** no collection.
+   - A collection renamed later isn't matched by its old name: importing the zip again then makes a new collection.
 
 **Concurrency:** imports run one at a time (a single-threaded import queue), so two sources delivering the same file cannot both insert it.
 
 ### 8.5 Sharing vs backup (privacy)
 - **Share routes:** the selected routes as GPX (one file, or a zip for several), containing name, description, track and waypoints only. **No rides, no stars.** Sent through the Android share sheet using `FileProvider` URIs.
+  - Several routes shared while a collection is chosen: the zip is named after the collection and its manifest carries `collection` (the name), so importing it recreates the collection (§8.4 step 7). No other collections are shared.
 - **Full backup:** a zip containing:
   - `manifest.json` (format version, app version, created date, `kind: "full-backup"`).
   - `routes/*.gpx`.
-  - `routes.json` (metadata, stars).
+  - `routes.json` (metadata, stars, and each route's collection names).
+  - `collections.json` (name, created date; empty collections too).
   - `rides/*.gpx` + `rides.json`.
   - Settings.
+
+  New fields are optional: older backups restore without collections, and older app versions ignore them.
 
   Before saving, the screen states: **"Contains your ride history (location tracks)."**
 - **Restore / import a zip:**
@@ -407,12 +432,14 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
     - Routes are matched by geometry hash; the local name, description and stars win.
     - Imported rides attach to the matched route.
     - Rides are de-duplicated by ride UUID.
+    - Collections are matched by name, ignoring case; missing ones are created. Memberships are added, never removed.
 - **Cloud backup off:** `dataExtractionRules` exclude cloud backup and allow device-to-device transfer. `allowBackup` is set accordingly for API < 31.
 
 ### 8.6 Deletion
 - Delete one ride, or *Delete all ride history* (with confirmation).
 - Deleting a route asks "Also delete its N rides?". Kept rides keep `routeNameSnapshot`.
 - Deleting a route that came from the watched folder writes a tombstone.
+- Deleting a collection (asks first) removes the collection and its memberships; its routes stay in the library.
 
 ---
 
@@ -647,7 +674,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D15 | Map source | OpenAndroMaps via user-initiated install links + manual `.map` import; own theme derived from `andromaps_*`; multiple map files combined; coverage check | Only source with MTB scale and trail visibility; its terms forbid automated in-app download and bundling the Elevate theme | Interview | 2026-11-09 |
 | D16 | Map renderer | **VTM**, chosen over Mapsforge by the on-device spike on the G15 (§12.3); osmdroid excluded | Spike on the G15 with the map moving every frame. VTM: 60 new pictures/s, 8%/h, ≤ 105 MB, first screen 0.7 s. Mapsforge: renders in software ~10×/s, 14%/h, ≤ 369 MB, 1.9 s. osmdroid was archived Nov 2024 | Interview; spike | 2026-11-09; 2026-11-11 |
 | D17 | Hillshading & DEM elevation | Deferred to v2 | Needs separate DEM files; not core to guidance | Interview | 2026-11-09 |
-| D18 | Library fields | Name, description, stars, elevation profile + stats, near me, ride history; no notes or tags | User selection | Interview | 2026-11-09 |
+| D18 | Library fields | Name, description, stars, elevation profile + stats, near me, ride history; no notes or tags (collections added later: D48) | User selection | Interview | 2026-11-09 |
 | D19 | Recording | Save the ridden GPS track; view it; export as GPX; local only; delete one ride or all; deleting a route asks about its rides; route name snapshot | GPS is already running, so the extra cost is small; privacy kept local | Interview | 2026-11-09 |
 | D20 | Import sources | Share/open-with, file picker, watched folder, direct `https` URL; all treated as untrusted input | User selection | Interview | 2026-11-09 |
 | D21 | Backup | Manual export only; cloud backup disabled; device-to-device transfer allowed; export reminder | No location history in the cloud; user's choice | Interview | 2026-11-09 |
@@ -675,6 +702,10 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D43 | compileSdk | `compileSdk 37` (targetSdk stays 36); refines D8 | Compose 1.12.x / current AndroidX refuse to build against 36 (AAR metadata check); targetSdk 36 keeps Android 16 runtime rules and Play compliance | Drift Accepted | 2026-11-09 |
 | D44 | Maneuver storage | Maneuvers are computed when a ride starts (both directions, with the route), not stored at import; the `maneuvers` table stays for v2 junction-aware maneuvers. Refines §5.3 "Storage" | Detection takes ~0.1 s for 100 km on a desktop JVM and 0.2–0.7 s for a 1.7 km route on the emulator (with JIT warm-up); loops are re-detected after rotating to the join point anyway; no stale rows after a route update | Implementation | 2026-11-10 |
 | D45 | Licence and repository | App code under GPL-3.0; the GitHub repository `LRosa2/Singletrail` is public, with commits under the GitHub noreply address; APKs are published as GitHub releases | Open source like its libraries; ready for F-Droid later; no work email in a public history | User | 2026-11-11 |
+| D46 | Near me distance | Near me measures to the nearest point anywhere along the route, not to its nearer end. Each route stores an outline: its track thinned with Douglas–Peucker at 15 m, as an encoded polyline (1e-5°) in `routes.outline` | Matches how a ride joins a route (D14); a route passing close by in its middle was listed as far away. Reading every GPX file to sort would grow with the library. The 51 SchweizMobil routes need 40 KB of outlines in all (1.4 KB at most), every track point stays within 15.4 m, and one pass over them takes ~1.4 ms on a desktop JVM | User | 2026-11-12 |
+| D47 | Imported names | Import drops komoot's "GPX Download: " prefix (any case and spacing) from track and file names, for picked, shared, URL, zip and watched-folder imports; a name that is only the prefix counts as no name. Routes already in the library keep their names | komoot puts it in front of every exported tour, so 15 tours saved from komoot would all sort together under G and read alike in the list. Renaming stays possible on the route page | User | 2026-11-13 |
+| D48 | Collections | Routes can be grouped into named collections; a route can be in several. Picked from a *Collection* chip on the library (one at a time, plus *Not in a collection*), managed on their own screen, edited from selection mode and the route page. Zips become a collection named after the zip (routes already in the library included); several GPX imported at once ask afterwards; watched-folder subfolders become collections; single files join none. Backups keep collections; a shared zip of a chosen collection recreates it. Replaces the "tags on routes" non-goal | The library grows by packages (51 SchweizMobil routes) and batches (15 overlapping komoot loops around St. Gallen); near me and search alone stop being enough. Several per route so "To ride" can sit across areas. Chips keep everything on one screen, unlike a collections home screen (an extra tap every time) or tabs (cramped beyond ~4). Re-importing a zip is how existing routes get grouped | User | 2026-11-13 |
+| D49 | Library filters | A *Filters* sheet holds minimum stars (moved from its own chip), length (≤ 20 / 20–40 / > 40 km), climb (≤ 500 / 500–1000 / > 1000 m), *Not ridden yet* and *Loops only*; the chip shows how many are on. Collection and filters are remembered across restarts like sort and stars | For choosing a ride at home; fixed bands are quicker to pick than sliders and cover rides of an afternoon to a full day | User | 2026-11-13 |
 
 ---
 
@@ -702,6 +733,7 @@ M0 Setup ──┬──▶ M1 :core:gpx ─────────┬─▶ M4
 | M8 | **Ride UI:** map view + banner, arrow view, swipe, all ride states, ride lock, dimming policy, low-power mode, finish summary + rating | M6, M7 | Full simulated ride at a desk; first real ride |
 | M9 | **Library extras:** watched folder + tombstones, URL import, near me, ride history + ride detail + GPX export, share routes, full backup/restore + merge, delete-all, export reminder, diagnostics export | M4, M6 | All journeys in §3 pass on the device |
 | M10 | **Field tuning & release:** reference-route rides with traces, threshold tuning (Q4), battery soak, release APK signed and given to friends | M8, M9 | 3 reference routes ridden without false or missed alerts the rider would care about |
+| M11 | **Library organizing:** (A) collections + filters (D48, D49), (B) a map of the library's routes, (C) tidy-up of overlapping routes. Each part gets its own design and plan, in that order | M9 | A: re-importing the SchweizMobil zip groups its 51 routes, and the 15 komoot loops imported at once land in one collection, on the device |
 | v2 | Junction-aware maneuvers (M7 + M5), wake-at-turns mode (M8), hillshading/DEM (M7), F-Droid preparation (Q3) | v1 | — |
 
 **Parallelism:** M1, M2 and M3 can run in parallel right after M0. M4 and M5 can run in parallel. M7 can start as soon as M2 and M4 are done, in parallel with M6.
@@ -871,11 +903,30 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] *Import from link* accepts a zip of GPX files (a route package), capped at 20 MB while downloading. 2 JVM tests
 - [x] **Route packages**, published as GitHub releases `routes-…`. `tools/routes/schweizmobil/export_routes.py` builds one from SchweizMobil's open MTB data: one GPX per local route and per national/regional stage, with searchable names ("Farner Bike (481) · Uznach loop") and descriptions (places, km, climb, difficulty, cantons, source). First package: eastern Switzerland and Liechtenstein, 51 routes (data of Sept 2026)
 - [x] *About* in the library menu (§8.1): version and build number, author, licence, source link, credits. The debug build is named "Singletrail debug" so the two launcher icons can be told apart. Checked on the G15 (0.1.2)
+- [x] *Near me* to the nearest point of each route (D46): `TrackOutline` in `:core:nav` (Douglas–Peucker, encoded polyline), Room schema v2 with `routes.outline` (auto-migration 1→2), outline stored at import and update, filled in from the GPX copy at startup for older routes, routes without an outline still measured to their nearer end. A new sort order, or the position arriving, scrolls the library to the top (it used to keep the previous first route in view, so near me opened among routes 40 km away). 10 outline JVM tests, 4 app JVM tests, 2 migration tests and 2 fill-in tests on the emulator. On the emulator: 0.1.2-debug with the 51 SchweizMobil routes upgraded in place, outlines filled in at startup (51 routes, 40 KB), near me from the middle of Panorama Bike stage 5 lists that stage first at 3 m (0.1.2: 11.9 km, third)
+- [x] komoot's "GPX Download: " prefix left out of imported route names (D47): `RouteNames.clean` used for single, split and joined tracks, the multiple-tracks question, and the watched folder. 4 name JVM tests, 3 import tests, 1 watched-folder test
 
 ### M10 — Field tuning & release
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures
 - [ ] Tune thresholds (Q4); battery soak test
 - [ ] Signed release APK to friends
+
+### M11 — Library organizing
+Part A, collections and filters (D48, D49):
+- [x] Room schema v3: `collections`, `route_collections` (auto-migration 2→3, migration test)
+- [x] Collection repository: create, rename, delete, add and remove routes, counts; names unique ignoring case
+- [x] Library: *Collection* chip (counts, *Not in a collection*, *Manage collections…*), *Filters* sheet (stars, length, climb, not ridden yet, loops only), all combined with search and sort and remembered across restarts
+- [x] Selection mode: *Add to collection*, *Remove from "‹name›"*; route page *Collections* line with *Edit*; *Manage collections* screen
+- [x] Import: zips → collection named after the zip (or its manifest), routes already in the library included; several GPX at once → ask; watched-folder subfolders → collections
+- [x] Sharing a chosen collection names the zip and its manifest after it; full backup and restore keep collections (`collections.json`, names per route), merged by name
+- [x] On the emulator: re-import the SchweizMobil zip (51 routes grouped), import the 15 komoot loops at once (one collection), every filter. Verified: 253 app JVM tests (36 new: collection names, filters and the collection choice, remembered choices, grouping zips, batches and watched-folder subfolders, a collection that can't be saved never failing an import, backup and sharing fields, a backup made before collections), 55 GPX and 155 nav tests, 35 tests on the emulator (8 collection repository, 1 migration to v3). On the emulator: the SchweizMobil zip → *SchweizMobil-MTB-Ostschweiz (51)*; imported again → "Already in your library" and "In collection …"; the 15 komoot files picked at once → no "GPX Download:" prefix, "Put them in a collection?" counting 15 → *komoot St. Gallen (15)*, *Not in a collection (0)*; on that collection over 40 km keeps 8 (exactly those shown above 40.0 km), up to 20 km none, climb over 1000 m 5, not ridden yet with loops only all 15; filters kept after a restart; add to and remove from a collection, the route page's *Edit*, rename (a change of case allowed, another collection's name refused), delete (the library falls back to *All routes*); sharing three routes from *komoot St. Gallen* → `komoot St. Gallen.zip` with the name in its manifest; full backup → clear app data → restore: 66 routes and both collections with their counts. Upgrading a real v2 library is covered by the migration tests and still to be seen on the G15
+- [ ] On the G15: full backup first, then install over the 0.1.2 library (schema v1 → v3), re-import the SchweizMobil zip, import the 15 komoot loops at once, every filter
+
+Part B, library map (own design first):
+- [ ] The routes of the library (or of the chosen collection and filters) on the offline map; tap a line to open the route
+
+Part C, tidy-up (own design first):
+- [ ] Overlapping routes on the route page; a near-duplicates list for the library
 
 ### v2
 - [ ] Junction-aware maneuvers

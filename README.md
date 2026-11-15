@@ -17,9 +17,11 @@ Maps: in the app, open *Maps* → *Get maps*, choose a region on the OpenAndroMa
 install link for other apps. Maps are free for private use under OpenAndroMaps' terms.
 
 Routes: [route packages](https://github.com/LRosa2/Singletrail/releases?q=routes&expanded=true) are zips
-of ready-made GPX routes. The first is SchweizMobil's official MTB routes in eastern Switzerland. In
-the app, use *Import from link…* with the zip's download link, or download it and *Import* it. How
-packages are built: [`tools/routes/schweizmobil`](tools/routes/schweizmobil/README.md).
+of ready-made GPX routes: SchweizMobil's official MTB routes in eastern Switzerland, and the
+signposted Appenzellerland routes from OpenStreetMap. In the app, use *Import from link…* with the
+zip's download link, or download it and *Import* it. How packages are built:
+[`tools/routes/schweizmobil`](tools/routes/schweizmobil/README.md) and
+[`tools/routes/osm`](tools/routes/osm/README.md).
 
 ## Build
 

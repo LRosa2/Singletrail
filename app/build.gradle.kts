@@ -27,8 +27,8 @@ android {
         applicationId = "io.github.lrosa2.singletrail"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The ABIs the map renderer's native helper is built for (no 32-bit x86).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }

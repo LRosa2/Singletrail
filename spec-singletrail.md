@@ -127,6 +127,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
 ### 4.5 Ride lock (rain, mud, gloves)
 - While riding, touches are ignored except a deliberate **long-press to unlock** (shown as a lock icon).
 - *Stop ride* needs a long-press plus a confirmation.
+- Unlocked, the ride screen also offers *Ride the other way* (switches at once, D50) and, while finding the route or off it, *Directions* to the arrow's point in another map app (D51).
 - After manual panning, the map returns to follow mode after about 10 s.
 - Prompts that need an answer (reverse) **auto-accept after 10 s** with a tone and offer *Undo*.
 - While the app is in the foreground, **volume keys** act as accept/undo for the active prompt.
@@ -199,8 +200,9 @@ WAITING_GPS ─fix─▶ ACQUIRING ─match within T─▶ ON_ROUTE ◀───
                          dist > T for ≥3 good fixes / ≥5 s      dist < T−10 m ×2
                                     ▼                                  │
                                OFF_ROUTE ──────────────────────────────┘
-ON_ROUTE ─consistent backwards ≥100 m─▶ REVERSE_PENDING ─10 s / accept─▶ ON_ROUTE (reversed)
-                                                └─ undo ─▶ ON_ROUTE (suppress 500 m)
+ON_ROUTE ─back along the route ≥100 m (≥50 m right after joining)─▶ REVERSE_PENDING ─10 s / accept─▶ ON_ROUTE (reversed)
+OFF_ROUTE ─riding along the route backwards ≥100 m─▶ REVERSE_PENDING       └─ undo ─▶ ON_ROUTE (suppress 500 m)
+any but FINISHED ─"Ride the other way"─▶ turned round at once (D50)
 any ─no fix ≥10 s─▶ NO_GPS (overlay; previous state kept) ─fix─▶ previous state
 ON_ROUTE ─within 30 m of finish after ≥90% progress─▶ FINISHED
 ```
@@ -222,12 +224,15 @@ ON_ROUTE ─within 30 m of finish after ≥90% progress─▶ FINISHED
   - The first match sets `s_start`.
   - On loops, progress wraps and the ride finishes when the rider returns to `s_start`.
   - On point-to-point routes, the part before `s_start` is skipped.
-- **Ride reversed:** reversed geometry with the reverse maneuver list. Chosen at start or by auto-detection.
-- **Auto-detect reverse:**
-  - Triggers when the rider's course is opposite (> 135°) to the expected segment at `s`, `s` is decreasing consistently for ≥ 100 m, and speed is > 2 m/s.
+- **Ride reversed:** reversed geometry with the reverse maneuver list. Chosen at start, by auto-detection, or with *Ride the other way* on the ride screen.
+- **Auto-detect reverse** (D50):
+  - Counts the metres ridden back along the route (`s` decreasing), at any speed and whatever the GPS heading. Triggers at ≥ 100 m, or ≥ 50 m right after joining, until the rider has gone 100 m forward from the join point.
+  - A trusted GPS course along the route (within 90°) restarts the count. Standing still never moves its start, so GPS jitter can't add up.
+  - No count while another pass of the route, ahead, runs within `T` of the rider (an out-and-back, the two ends of a loop, stacked switchbacks): without a course the match may have slipped from one pass to the other. Overlapping out-and-back return legs don't trigger it either, because matching stays continuous at `s` (§5.5).
+  - Also while OFF_ROUTE: riding along the route backwards, which rejoining doesn't accept (it needs a course along the route), prompts after 100 m.
   - Leads to REVERSE_PENDING.
-  - Overlapping out-and-back return legs don't trigger it, because matching stays continuous at `s` (§5.5).
-- No "navigate to start" mode. When the rider is far from the route, the ACQUIRING arrow covers it.
+- **Ride the other way** (D50): on the unlocked ride screen, in any phase but FINISHED. Switches at once with the reversed tone; off route, the rider is placed on the turned route straight away when within `T` of it.
+- No "navigate to start" mode. When the rider is far from the route, the ACQUIRING arrow covers it, and *Directions* hands the arrow's point to another map app for a way there on roads and paths (D51).
 
 ### 5.9 Heading source
 - **Riding (speed ≥ 6 km/h** and GPS bearing accuracy ≤ 30°): use GPS course.
@@ -706,6 +711,8 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D47 | Imported names | Import drops komoot's "GPX Download: " prefix (any case and spacing) from track and file names, for picked, shared, URL, zip and watched-folder imports; a name that is only the prefix counts as no name. Routes already in the library keep their names | komoot puts it in front of every exported tour, so 15 tours saved from komoot would all sort together under G and read alike in the list. Renaming stays possible on the route page | User | 2026-11-13 |
 | D48 | Collections | Routes can be grouped into named collections; a route can be in several. Picked from a *Collection* chip on the library (one at a time, plus *Not in a collection*), managed on their own screen, edited from selection mode and the route page. Zips become a collection named after the zip (routes already in the library included); several GPX imported at once ask afterwards; watched-folder subfolders become collections; single files join none. Backups keep collections; a shared zip of a chosen collection recreates it. Replaces the "tags on routes" non-goal | The library grows by packages (51 SchweizMobil routes) and batches (15 overlapping komoot loops around St. Gallen); near me and search alone stop being enough. Several per route so "To ride" can sit across areas. Chips keep everything on one screen, unlike a collections home screen (an extra tap every time) or tabs (cramped beyond ~4). Re-importing a zip is how existing routes get grouped | User | 2026-11-13 |
 | D49 | Library filters | A *Filters* sheet holds minimum stars (moved from its own chip), length (≤ 20 / 20–40 / > 40 km), climb (≤ 500 / 500–1000 / > 1000 m), *Not ridden yet* and *Loops only*; the chip shows how many are on. Collection and filters are remembered across restarts like sort and stars | For choosing a ride at home; fixed bands are quicker to pick than sliders and cover rides of an afternoon to a full day | User | 2026-11-13 |
+| D50 | Riding the other way | Reverse detection counts metres ridden back along the route, at any speed and GPS heading: 100 m, or 50 m right after joining until the rider has gone 100 m forward; a GPS course along the route restarts the count; nothing counts while another pass of the route runs beside the rider; riding along the route backwards while off route prompts too. *Ride the other way* on the unlocked ride screen switches at once. Replaces "course > 135° and speed > 2 m/s" in §5.8 | Field test: arrived at a route, set off the other way, and it never switched. Every reading had to be faster than 7.2 km/h with a heading good to 30°, and one that wasn't restarted the count; matching gave up about 180 m back, and off route never looked at the other direction. A simulated 7 km/h ride stayed off route to the end. Climbing and pushing are slower than that. The pass guard keeps slow out-and-backs and loop ends from prompting; the button is the way out when detection can't tell | User | 2026-11-15 |
+| D51 | Directions to the route | While finding the route or off it, the unlocked ride screen offers *Directions*: a `geo:` link with a pin on the arrow's point (the nearest point while finding the route, the return target off route), labelled with the route's name, opened in whatever map app the rider picks. The ride keeps running meanwhile. No button on the route page | The arrow is a straight line, across fields and streams; a map app plans a way there on roads and paths. A standard link adds no Google code (F-Droid, §2) and works with Google Maps, OsmAnd or Organic Maps. Starting the ride at home gives the same point, so the route page needs nothing | User | 2026-11-15 |
 
 ---
 
@@ -908,6 +915,10 @@ Tick items as they land. Order and dependencies follow **Dependency Graph & Impl
 - [x] komoot's "GPX Download: " prefix left out of imported route names (D47): `RouteNames.clean` used for single, split and joined tracks, the multiple-tracks question, and the watched folder. 4 name JVM tests, 3 import tests, 1 watched-folder test
 
 ### M10 — Field tuning & release
+From the first ride outside (2026-11-15):
+- [x] Riding the other way (D50): reverse detection counts metres back along the route at any speed (100 m, or 50 m right after joining), a course along the route restarts it, nothing counts beside another pass of the route, and riding the route backwards while off route prompts too; *Ride the other way* on the unlocked ride screen switches at once in any phase (off route: back on the route at once when beside it). A loop turned round in its first 10% rides the whole lap the other way from there instead of finishing on the spot (found on the emulator). New trace action `RIDE_OTHER_WAY`. 18 new engine tests (the field case: joining mid-route and climbing back at 6.8 km/h used to go off route for good; slow, noisy, untrusted-heading, out-and-back, loop and off-route cases; the button in every phase) and 1 session test; 55 GPX, 173 nav and 261 app JVM tests green
+- [x] *Directions* to the route in another map app (D51): `Directions` picks the arrow's point while finding the route or off it and builds a `geo:` link labelled with the route's name; a message when no app can open it. 7 JVM tests. On the emulator: the Kaien-Route from 855 m away → *Directions* opened Google Maps with a pin on the route's nearest point (47.434751, 9.536921) named "Kaien-Route · Heiden loop"; back in Singletrail the ride was still running; on the route only *Ride the other way* shows, and each tap switched the banner between "↘ Sharp right · 30 m" and "↱ Turn right · 260 m" (13.7 km left both ways)
+- [ ] On the G15: both, outside
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures
 - [ ] Tune thresholds (Q4); battery soak test
 - [ ] Signed release APK to friends

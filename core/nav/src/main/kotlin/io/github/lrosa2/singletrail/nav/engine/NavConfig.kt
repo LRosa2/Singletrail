@@ -47,10 +47,11 @@ data class NavConfig(
     val finishRadiusMeters: Double = 30.0,
     val finishMinFraction: Double = 0.9,
 
-    // Reverse (§5.8)
-    val reverseCourseDeg: Double = 135.0,
+    // Reverse (§5.8, D50)
+    /** Riding back along the route this far, at any speed, asks to ride it the other way... */
     val reverseMinMeters: Double = 100.0,
-    val reverseMinSpeedMps: Double = 2.0,
+    /** ...or this far right after joining, before the rider has gone [reverseMinMeters] forward. */
+    val reverseJoinMeters: Double = 50.0,
     val reversePromptSeconds: Double = 10.0,
     val reverseUndoSuppressMeters: Double = 500.0,
 

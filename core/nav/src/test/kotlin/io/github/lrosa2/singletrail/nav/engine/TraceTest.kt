@@ -58,4 +58,21 @@ class TraceTest {
         assertEquals(recorded, replayed)
         assertTrue(recorded.any { it.name == "TURN_NOW" } && recorded.any { it.name == "FINISHED" })
     }
+
+    @Test
+    fun `riding the other way is recorded and replayed`() {
+        val lines = ArrayList<String>()
+        val recorder = TraceRecorder(Navigator(route)) { lines += it }
+        recorder.start(reversed = false, routeHash = null)
+        val sim = Ride(Navigator(route))
+        sim.ride(0 to 100, 0 to 300)
+        sim.log.mapNotNull { it.first }.forEach { recorder.onFix(it) }
+        assertTrue(recorder.rideOtherWay(sim.nanos).state.reversed)
+        assertTrue(lines.any { NavTrace.decode(it) == TraceRecord.Action(sim.nanos, TraceRecord.ActionKind.RIDE_OTHER_WAY) })
+
+        val recorded = lines.map { NavTrace.decode(it)!! }.filterIsInstance<TraceRecord.Event>()
+        val replayed = NavTrace.replay(Navigator(route), lines.asSequence().mapNotNull { NavTrace.decode(it) })
+        assertEquals(recorded, replayed)
+        assertTrue(recorded.last().name == "REVERSED")
+    }
 }

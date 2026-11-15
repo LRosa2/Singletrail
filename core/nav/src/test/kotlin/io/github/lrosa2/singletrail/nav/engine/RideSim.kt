@@ -42,10 +42,18 @@ internal class Ride(val nav: Navigator, var nanos: Long = 0L, val intervalS: Dou
         noiseM: Double = 0.0,
         accuracyM: Float = 5f,
         ageS: Double = 0.0,
+        bearingAccDeg: Float = 10f,
         // Corners only: positions between them are interpolated anyway.
-    ) = ride(corners.map { at(it.first, it.second) }, speedMps, noiseM, accuracyM, ageS)
+    ) = ride(corners.map { at(it.first, it.second) }, speedMps, noiseM, accuracyM, ageS, bearingAccDeg)
 
-    fun ride(path: List<RoutePoint>, speedMps: Double = 5.0, noiseM: Double = 0.0, accuracyM: Float = 5f, ageS: Double = 0.0) {
+    fun ride(
+        path: List<RoutePoint>,
+        speedMps: Double = 5.0,
+        noiseM: Double = 0.0,
+        accuracyM: Float = 5f,
+        ageS: Double = 0.0,
+        bearingAccDeg: Float = 10f,
+    ) {
         val track = PreparedRoute.prepare(path)
         val stepM = speedMps * intervalS
         var d = 0.0
@@ -58,7 +66,7 @@ internal class Ride(val nav: Navigator, var nanos: Long = 0L, val intervalS: Dou
             val x = Plane.x(p.lon) + random.nextGaussian() * noiseM
             val y = Plane.y(p.lat) + random.nextGaussian() * noiseM
             val pos = at(x, y)
-            fix(Fix(nanos, pos.lat, pos.lon, accuracyM, speedMps.toFloat(), course.toFloat(), 10f, null, 12), ageS)
+            fix(Fix(nanos, pos.lat, pos.lon, accuracyM, speedMps.toFloat(), course.toFloat(), bearingAccDeg, null, 12), ageS)
             d += stepM
         }
     }

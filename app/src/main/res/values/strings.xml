@@ -285,6 +285,9 @@
     <string name="ride_next_in">next %1$s in %2$s</string>
     <string name="ride_to_route">%1$s to the route</string>
     <string name="ride_back_to_route">Back to the route: %1$s</string>
+    <string name="action_directions">Directions</string>
+    <string name="ride_directions_no_app">No map app to show the way there.</string>
+    <string name="action_ride_other_way">Ride the other way</string>
     <string name="ride_calibrate">Compass needs calibrating: move the phone in a figure-8.</string>
     <string name="ride_gps_satellites">GPS · %1$s</string>
     <string name="ride_gps_poor">GPS weak</string>

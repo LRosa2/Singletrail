@@ -54,7 +54,7 @@ sealed interface TraceRecord {
     @SerialName("tick")
     data class Tick(val t: Long) : TraceRecord
 
-    enum class ActionKind { ACCEPT_REVERSE, UNDO_REVERSE }
+    enum class ActionKind { ACCEPT_REVERSE, UNDO_REVERSE, RIDE_OTHER_WAY }
 
     @Serializable
     @SerialName("action")
@@ -102,6 +102,7 @@ object NavTrace {
                     when (r.action) {
                         TraceRecord.ActionKind.ACCEPT_REVERSE -> navigator.acceptReverse(r.t)
                         TraceRecord.ActionKind.UNDO_REVERSE -> navigator.undoReverse(r.t)
+                        TraceRecord.ActionKind.RIDE_OTHER_WAY -> navigator.rideOtherWay(r.t)
                     },
                 )
                 is TraceRecord.Header, is TraceRecord.Event -> Unit
@@ -140,6 +141,11 @@ class TraceRecorder(val navigator: Navigator, private val sink: (String) -> Unit
     fun undoReverse(nowNanos: Long): NavUpdate {
         write(TraceRecord.Action(nowNanos, TraceRecord.ActionKind.UNDO_REVERSE))
         return navigator.undoReverse(nowNanos).also { log(nowNanos, it) }
+    }
+
+    fun rideOtherWay(nowNanos: Long): NavUpdate {
+        write(TraceRecord.Action(nowNanos, TraceRecord.ActionKind.RIDE_OTHER_WAY))
+        return navigator.rideOtherWay(nowNanos).also { log(nowNanos, it) }
     }
 
     private fun log(t: Long, update: NavUpdate) = NavTrace.events(t, update).forEach(::write)

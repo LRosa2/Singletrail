@@ -92,6 +92,10 @@ class RideController(
         session?.undoReverse()
     }
 
+    fun rideOtherWay() {
+        session?.rideOtherWay()
+    }
+
     fun setLowPower(on: Boolean) {
         update { it.copy(lowPower = on) }
     }

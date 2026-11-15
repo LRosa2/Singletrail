@@ -1,5 +1,6 @@
 package io.github.lrosa2.singletrail.ui.ride
 
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -7,6 +8,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.SystemClock
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -25,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -49,9 +53,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrosa2.singletrail.R
 import io.github.lrosa2.singletrail.data.settings.RideSettings
@@ -60,6 +66,7 @@ import io.github.lrosa2.singletrail.nav.engine.NavState
 import io.github.lrosa2.singletrail.nav.engine.RidePhase
 import io.github.lrosa2.singletrail.ride.BatteryAdvice
 import io.github.lrosa2.singletrail.ride.BatteryPolicy
+import io.github.lrosa2.singletrail.ride.Directions
 import io.github.lrosa2.singletrail.ride.RideController
 import io.github.lrosa2.singletrail.ride.RideFailure
 import io.github.lrosa2.singletrail.ride.RideMessage
@@ -134,6 +141,9 @@ private fun RideContent(
     LaunchedEffect(finished) { if (finished) locked = false }
 
     val secondsSinceTouch = (now - lastTouch) / 1e9
+    // Unlocked, the ride offers directions to the route and riding it the other way (D50, D51).
+    val actions = !locked && ui.failure == null && nav != null &&
+        nav.phase != RidePhase.FINISHED && nav.phase != RidePhase.REVERSE_PENDING
     WindowBrightness(nav?.let { ScreenPolicy.brightness(it, secondsSinceTouch, rideSettings.dimBetweenTurns, ui.lowPower, rideSettings.dimLevel) })
 
     Surface(
@@ -177,8 +187,13 @@ private fun RideContent(
                     nav == null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     else -> RideBody(ui, nav, now, settings, mapFiles, log, controller, locked, battery, rideSettings.lowPowerAt)
                 }
-                // Room for the controls that stay usable while locked.
-                Spacer(Modifier.height(if (nav?.phase == RidePhase.REVERSE_PENDING) 152.dp else 76.dp))
+                // Room for the controls drawn over the bottom of the screen.
+                val controls = when {
+                    nav?.phase == RidePhase.REVERSE_PENDING -> 152.dp
+                    actions -> 152.dp
+                    else -> 76.dp
+                }
+                Spacer(Modifier.height(controls))
             }
 
             Column(
@@ -201,6 +216,7 @@ private fun RideContent(
                         hintUntil = SystemClock.elapsedRealtimeNanos() + HINT_MS * 1_000_000
                     }
                 }
+                if (actions) RideActions(nav, ui.routeName, onOtherWay = controller::rideOtherWay)
                 if (ui.failure == null) {
                     val hint = { hintUntil = SystemClock.elapsedRealtimeNanos() + HINT_MS * 1_000_000 }
                     if (locked) {
@@ -303,6 +319,35 @@ private fun androidx.compose.foundation.layout.ColumnScope.RideBody(
     StatsBar(nav)
     BatteryNotice(battery, lowPowerAt, ui.lowPower, controller::setLowPower)
     ui.warnings.sortedBy { it.ordinal }.take(2).forEach { WarningLine(it) }
+}
+
+/**
+ * Controls for when the screen is unlocked: directions to the route in another map app while
+ * finding it or off it (D51), and riding the route the other way (D50).
+ */
+@Composable
+private fun RideActions(nav: NavState, routeName: String, onOtherWay: () -> Unit) {
+    val context = LocalContext.current
+    val point = Directions.pointOf(nav)
+    val noMapApp = stringResource(R.string.ride_directions_no_app)
+    // Drawn over the stats, so the buttons need their own background.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (point != null) {
+            FilledTonalButton(
+                onClick = {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Directions.link(point, routeName).toUri()))
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(context, noMapApp, Toast.LENGTH_LONG).show()
+                    }
+                },
+                modifier = Modifier.weight(1f).heightIn(min = 64.dp),
+            ) { Text(stringResource(R.string.action_directions), fontSize = 18.sp, textAlign = TextAlign.Center) }
+        }
+        FilledTonalButton(onClick = onOtherWay, modifier = Modifier.weight(1f).heightIn(min = 64.dp)) {
+            Text(stringResource(R.string.action_ride_other_way), fontSize = 18.sp, textAlign = TextAlign.Center)
+        }
+    }
 }
 
 @Composable

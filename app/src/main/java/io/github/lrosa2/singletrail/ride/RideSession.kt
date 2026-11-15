@@ -67,7 +67,7 @@ class RideSession(
 
     val state: StateFlow<NavState> = mutableState.asStateFlow()
 
-    private enum class Command { ACCEPT_REVERSE, UNDO_REVERSE }
+    private enum class Command { ACCEPT_REVERSE, UNDO_REVERSE, RIDE_OTHER_WAY }
 
     suspend fun run(readings: Flow<GpsReading>, headings: Flow<HeadingSample>): Nothing = coroutineScope {
         traceHeader?.let { output.trace(NavTrace.encode(it)) }
@@ -107,6 +107,7 @@ class RideSession(
                     when (command) {
                         Command.ACCEPT_REVERSE -> recorder?.acceptReverse(now) ?: navigator.acceptReverse(now)
                         Command.UNDO_REVERSE -> recorder?.undoReverse(now) ?: navigator.undoReverse(now)
+                        Command.RIDE_OTHER_WAY -> recorder?.rideOtherWay(now) ?: navigator.rideOtherWay(now)
                     },
                 )
             }
@@ -120,6 +121,11 @@ class RideSession(
 
     fun undoReverse() {
         commands.trySend(Command.UNDO_REVERSE)
+    }
+
+    /** The rider turned the route round on the ride screen (D50). */
+    fun rideOtherWay() {
+        commands.trySend(Command.RIDE_OTHER_WAY)
     }
 
     fun snapshot(): NavCheckpoint = navigator.snapshot()

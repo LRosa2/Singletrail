@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
@@ -157,12 +158,28 @@ class RideSessionTest {
         val backwards = RouteSimulator(corner.reversed(), speedMps = 5.0, noiseM = 0.0)
             .readings(450.0, clock(), wallClock = { 0L })
         val job = launch { session.run(backwards, emptyFlow()) }
-        advanceTimeBy(24_000)
+        // Right after joining, 50 m back asks (D50): about 10 s at 5 m/s, then 10 s to answer.
+        advanceTimeBy(15_000)
         assertEquals(RidePhase.REVERSE_PENDING, session.state.value.phase)
         assertEquals(listOf(Tone.REVERSE_PROMPT), out.tones)
         session.undoReverse()
         runCurrent()
         assertEquals(RidePhase.ON_ROUTE, session.state.value.phase)
+        job.cancelAndJoin()
+    }
+
+    @Test
+    fun `the ride can be turned round from the ride screen`() = runTest {
+        val out = FakeOutput()
+        val session = RideSession(Navigator(route), out, clock())
+        val forwards = RouteSimulator(corner, speedMps = 5.0, noiseM = 0.0).readings(100.0, clock(), wallClock = { 0L })
+        val job = launch { session.run(forwards, emptyFlow()) }
+        advanceTimeBy(5_000)
+        assertEquals(RidePhase.ON_ROUTE, session.state.value.phase)
+        assertFalse(session.state.value.reversed)
+        session.rideOtherWay()
+        runCurrent()
+        assertTrue(session.state.value.reversed)
         job.cancelAndJoin()
     }
 

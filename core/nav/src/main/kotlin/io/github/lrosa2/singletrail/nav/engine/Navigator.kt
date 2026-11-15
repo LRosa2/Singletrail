@@ -11,6 +11,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 
 /**
  * The navigation engine (spec §5): a deterministic function of the route, the config and the stream
@@ -67,9 +68,16 @@ class Navigator(
     private var approachMinDist = 0.0
     private var target: NavTarget? = null
 
+    /** Where the current run back along the route started (spec §5.8, D50). */
     private var reverseAnchor: Double? = null
     private var reverseSuppressUntil = 0.0
     private var reverseSince: Long? = null
+
+    /** Until progress reaches this, the direction is the join's guess and a shorter run back is enough. */
+    private var joinSettleS = Double.NEGATIVE_INFINITY
+
+    /** Off route: the route point beside the rider at the last fix, to follow a run back along it. */
+    private var offReverseLast: Double? = null
 
     private val speed = SpeedSmoother(config.speedWindowSeconds)
     private val heading = HeadingFusion(config)
@@ -137,6 +145,28 @@ class Navigator(
         return NavUpdate(state, events)
     }
 
+    /**
+     * The rider asked to ride the route the other way (ride screen, D50): switches at once, whatever
+     * the phase. Off route, the rider is found again on the turned route straight away when beside it.
+     */
+    fun rideOtherWay(@Suppress("UNUSED_PARAMETER") nowNanos: Long): NavUpdate {
+        val events = ArrayList<NavEvent>()
+        when (phase) {
+            RidePhase.WAITING_GPS, RidePhase.ACQUIRING -> {
+                flipCourse(0.0)
+                events += NavEvent.Reversed
+            }
+            RidePhase.ON_ROUTE, RidePhase.REVERSE_PENDING -> switchDirection(events)
+            RidePhase.OFF_ROUTE -> {
+                turnAroundOffRoute()
+                events += NavEvent.Reversed
+            }
+            RidePhase.FINISHED -> Unit
+        }
+        if (events.isNotEmpty()) lastGood?.let { updateTarget(it, good = true) }
+        return NavUpdate(state, events)
+    }
+
     /** The rider pressed Undo: keep the direction and don't ask again for a while. */
     fun undoReverse(@Suppress("UNUSED_PARAMETER") nowNanos: Long): NavUpdate {
         val events = ArrayList<NavEvent>()
@@ -145,6 +175,7 @@ class Navigator(
             reverseSince = null
             reverseAnchor = null
             reverseSuppressUntil = odometer + config.reverseUndoSuppressMeters
+            joinSettleS = Double.NEGATIVE_INFINITY
             events += NavEvent.ReverseUndone
         }
         return NavUpdate(state, events)
@@ -164,6 +195,7 @@ class Navigator(
         }
         distanceToRoute = c.distance
         markPassedBefore(progress)
+        joinSettleS = progress + config.reverseMinMeters
         phase = RidePhase.ON_ROUTE
         events += NavEvent.Joined
     }
@@ -242,6 +274,7 @@ class Navigator(
         } else {
             backCount = 0
         }
+        if (phase == RidePhase.OFF_ROUTE) checkReverseOffRoute(fix, events)
     }
 
     private fun enterOffRoute(exit: Double, alreadyOff: Double, events: MutableList<NavEvent>) {
@@ -253,6 +286,7 @@ class Navigator(
         aheadLocked = false
         approachS = null
         reverseAnchor = null
+        offReverseLast = null
         events += NavEvent.OffRoute
     }
 
@@ -283,20 +317,73 @@ class Navigator(
             reverseAnchor = null
             return
         }
-        val crs = fix.trustedCourse(config)
-        val opposite = crs != null && speed.current > config.reverseMinSpeedMps &&
-            abs(Geo.turnDeg(crs, c.bearing)) > config.reverseCourseDeg
-        val anchor = reverseAnchor
-        when {
-            !opposite -> reverseAnchor = null
-            anchor == null || rawS > anchor + REVERSE_RESET_M -> reverseAnchor = rawS
-            anchor - rawS >= config.reverseMinMeters -> {
-                phase = RidePhase.REVERSE_PENDING
-                reverseSince = fix.elapsedNanos
-                reverseAnchor = null
-                events += NavEvent.ReversePrompt
-            }
+        val needed = if (highWater < joinSettleS) config.reverseJoinMeters else config.reverseMinMeters
+        if (runBack(fix, c.bearing, rawS) >= needed) promptReverse(fix, events)
+    }
+
+    /**
+     * Off route but riding along the route the other way, where rejoining waits for a course along
+     * the route: the same prompt as on it (D50).
+     */
+    private fun checkReverseOffRoute(fix: Fix, events: MutableList<NavEvent>) {
+        val c = if (odometer < reverseSuppressUntil) null else course.bestNear(fix.lat, fix.lon, threshold) { _, d, _ -> d }
+        val last = offReverseLast
+        if (c == null) {
+            reverseAnchor = null
+            offReverseLast = null
+            return
         }
+        var s = c.s
+        if (course.closed && last != null) s += round((last - s) / course.length) * course.length
+        val dt = lastGood?.let { fix.elapsedNanos.secondsSince(it.elapsedNanos).coerceIn(0.0, 10.0) } ?: 0.0
+        // Another pass of the route beside the rider starts a new run.
+        if (last != null && abs(s - last) > config.jumpSlackMeters + speed.current * dt) reverseAnchor = null
+        offReverseLast = s
+        if (runBack(fix, c.bearing, s) < config.reverseMinMeters) return
+        if (s > exitS) markPassedBefore(s) else rearmAfter(s)
+        moveTo(s, fix)
+        distanceToRoute = c.distance
+        promptReverse(fix, events)
+    }
+
+    /**
+     * Metres ridden back along the route, to [s], since the rider last went forward (spec §5.8, D50).
+     * Measured along the route, so it counts at any speed and with any GPS course. A course along
+     * the route restarts it, and standing still never moves where it started.
+     */
+    private fun runBack(fix: Fix, segmentBearing: Double, s: Double): Double {
+        val crs = fix.trustedCourse(config)
+        val forward = crs != null && abs(Geo.turnDeg(crs, segmentBearing)) < FORWARD_COURSE_DEG
+        val anchor = reverseAnchor
+        val start = when {
+            anchor == null || forward -> s
+            s > anchor -> if (speed.current >= config.movingMinSpeedMps) s else anchor
+            anotherPassBeside(fix, s, anchor) -> s
+            else -> anchor
+        }
+        reverseAnchor = start
+        return start - s
+    }
+
+    /**
+     * Another pass of the route, ahead, runs right beside the rider: an out-and-back, the two ends of
+     * a loop, stacked switchbacks. Without a GPS course to tell them apart the match may have slipped
+     * from one pass to the other, so going "back" there is no evidence of riding the other way.
+     */
+    private fun anotherPassBeside(fix: Fix, s: Double, anchor: Double): Boolean {
+        val from = s + config.jumpSlackMeters
+        val to = max(anchor, progress) + config.windowAheadMinMeters
+        if (to <= from) return false
+        val alt = course.bestInRange(fix.lat, fix.lon, from, to) { _, d, _ -> d } ?: return false
+        // The nearest point being the start of the range is just the same stretch, further along.
+        return alt.distance <= threshold && alt.s > from + 0.5
+    }
+
+    private fun promptReverse(fix: Fix, events: MutableList<NavEvent>) {
+        phase = RidePhase.REVERSE_PENDING
+        reverseSince = fix.elapsedNanos
+        reverseAnchor = null
+        events += NavEvent.ReversePrompt
     }
 
     private fun checkReverseDeadline(now: Long, events: MutableList<NavEvent>) {
@@ -305,17 +392,62 @@ class Navigator(
     }
 
     private fun switchDirection(events: MutableList<NavEvent>) {
-        val length = course.length
-        val newRaw = if (course.closed) {
-            loopStart = navRoute.forward.lengthMeters - loopStart!!
-            ((-rawS % length) + length) % length
+        val s = flipCourse(rawS)
+        lastMatchNanos = lastGood?.elapsedNanos ?: lastMatchNanos
+        restartAt(s)
+        phase = RidePhase.ON_ROUTE
+        events += NavEvent.Reversed
+    }
+
+    /** Off route: turns the course round at the exit point, then finds the rider on it if beside it. */
+    private fun turnAroundOffRoute() {
+        val s = flipCourse(exitS)
+        restartAt(s)
+        exitS = s
+        val fix = lastGood
+        val c = fix?.let {
+            course.bestNear(it.lat, it.lon, threshold) { at, d, b ->
+                d + headingPenalty(it, b) + if (at < s - config.jitterBackMeters) BEHIND_PENALTY_M else 0.0
+            }
+        }
+        if (fix != null && c != null) {
+            val on = c.s.coerceIn(0.0, course.length)
+            markPassedBefore(on)
+            moveTo(on, fix)
+            distanceToRoute = c.distance
+            phase = RidePhase.ON_ROUTE
         } else {
-            length - rawS
+            // Still away from the route: look for it anywhere ahead, as after a long detour.
+            offDistance = max(offDistance, config.shortDetourMeters)
+            backCount = 0
+            aheadLocked = false
+            approachS = null
+            offReverseLast = null
+        }
+    }
+
+    /** Turns the course round; returns where [s] on the old course lies on the new one. */
+    private fun flipCourse(s: Double): Double {
+        val length = course.length
+        var turned = if (course.closed) {
+            loopStart = navRoute.forward.lengthMeters - loopStart!!
+            ((-s % length) + length) % length
+        } else {
+            length - s
+        }
+        if (course.closed && turned >= config.finishMinFraction * length) {
+            // Barely into the lap: turned round, the rider would be beside the finish and done at
+            // once. The whole lap the other way starts here instead.
+            loopStart = (loopStart!! + turned) % navRoute.forward.lengthMeters
+            turned = 0.0
         }
         reversed = !reversed
         course = buildCourse()
-        val s = newRaw.coerceIn(0.0, course.length)
-        lastMatchNanos = lastGood?.elapsedNanos ?: lastMatchNanos
+        return turned.coerceIn(0.0, course.length)
+    }
+
+    /** Progress and turn alerts start over at [s] on a turned course. */
+    private fun restartAt(s: Double) {
         progress = s
         highWater = s
         rawS = s
@@ -326,8 +458,8 @@ class Navigator(
         markPassedBefore(s)
         reverseSince = null
         reverseAnchor = null
-        phase = RidePhase.ON_ROUTE
-        events += NavEvent.Reversed
+        // The rider chose this direction: the shorter run back after joining no longer applies.
+        joinSettleS = Double.NEGATIVE_INFINITY
     }
 
     private fun checkFinish(fix: Fix, events: MutableList<NavEvent>) {
@@ -619,8 +751,8 @@ class Navigator(
         /** Off-route searches prefer points ahead: a point behind has to be this much closer. */
         private const val BEHIND_PENALTY_M = 10.0
 
-        /** The reverse check restarts when progress moves forward by this much. */
-        private const val REVERSE_RESET_M = 10.0
+        /** A trusted GPS course within this of the route's direction is riding it forward. */
+        private const val FORWARD_COURSE_DEG = 90.0
 
         /** Faster than this between two fixes (108 km/h) is a GPS jump, not riding. */
         private const val MAX_PLAUSIBLE_SPEED_MPS = 30.0

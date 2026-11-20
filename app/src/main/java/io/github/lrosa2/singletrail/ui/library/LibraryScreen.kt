@@ -228,7 +228,7 @@ fun LibraryScreen(
                                 RouteCard(
                                     route,
                                     selected = route.id in state.selected,
-                                    away = state.here?.takeIf { state.sort == LibrarySort.NEAR_ME }?.let { distanceTo(route, it) },
+                                    away = state.away(route),
                                     onClick = { if (selecting) viewModel.toggleSelected(route.id) else onOpenRoute(route.id) },
                                     onLongClick = { viewModel.toggleSelected(route.id) },
                                 )

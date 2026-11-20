@@ -45,6 +45,12 @@ data class LibraryState(
     /** The chosen collection's name; null for All and Not in a collection. */
     val collectionName: String?
         get() = (collection as? CollectionChoice.One)?.let { chosen -> collections.firstOrNull { it.id == chosen.id }?.name }
+
+    /**
+     * How far [route] is, for its card in every sort: straight-line metres to its nearest point; null until
+     * "near me" has found the rider.
+     */
+    fun away(route: RouteEntity): Double? = here?.let { distanceTo(route, it) }
 }
 
 enum class LocationLookup { IDLE, LOCATING, FAILED }
@@ -53,7 +59,6 @@ private data class View(
     val sort: LibrarySort = LibrarySort.NAME,
     val filters: LibraryFilters = LibraryFilters(),
     val collection: CollectionChoice = CollectionChoice.All,
-    val here: Here? = null,
     val selected: Set<String> = emptySet(),
     val location: LocationLookup = LocationLookup.IDLE,
     val query: String = "",
@@ -67,6 +72,8 @@ class LibraryViewModel(
     private val collections: CollectionRepository,
     private val settings: SettingsStore,
     private val appVersion: String,
+    /** Where "near me" last found the rider, shared with the route page (spec §8.1). */
+    private val position: MutableStateFlow<Here?> = MutableStateFlow(null),
     private val clock: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val view = MutableStateFlow(View())
@@ -88,13 +95,14 @@ class LibraryViewModel(
     }
 
     private val groups = combine(collections.observeCounts(), collections.observeMembers(), ::Groups)
+    private val viewHere = combine(view, position, ::Pair)
 
     val state: StateFlow<LibraryState> =
-        combine(repository.observeRoutes(), rides.observeRides(), settings.lastBackupAt, view, groups) { routes, rideList, lastBackup, v, g ->
+        combine(repository.observeRoutes(), rides.observeRides(), settings.lastBackupAt, viewHere, groups) { routes, rideList, lastBackup, (v, here), g ->
             val ids = routes.map { it.id }
             val choice = v.collection.resolve(g.counts.map { it.id }.toSet())
             LibraryState(
-                routes = arrange(routes, v.sort, v.filters, v.here, v.query, choice.allowed(g.members, ids)),
+                routes = arrange(routes, v.sort, v.filters, here, v.query, choice.allowed(g.members, ids)),
                 sort = v.sort,
                 filters = v.filters,
                 collection = choice,
@@ -104,7 +112,7 @@ class LibraryViewModel(
                 total = routes.size,
                 loaded = true,
                 selected = v.selected.intersect(ids.toSet()),
-                here = v.here,
+                here = here,
                 location = v.location,
                 backupDue = BackupReminder.due(lastBackup, clock(), routes.size, rideList.size),
             )
@@ -143,9 +151,8 @@ class LibraryViewModel(
 
     /** The answer to a "near me" lookup; null when no position could be found. */
     fun located(here: Here?) {
-        view.update {
-            if (here == null) it.copy(location = LocationLookup.FAILED) else it.copy(here = here, location = LocationLookup.IDLE)
-        }
+        if (here != null) position.value = here
+        view.update { it.copy(location = if (here == null) LocationLookup.FAILED else LocationLookup.IDLE) }
     }
 
     fun toggleSelected(id: String) {

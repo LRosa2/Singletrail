@@ -14,6 +14,8 @@ import io.github.lrosa2.singletrail.data.routes.RouteRepository
 import io.github.lrosa2.singletrail.maps.MapCoverage
 import io.github.lrosa2.singletrail.maps.area
 import io.github.lrosa2.singletrail.nav.RoutePosition
+import io.github.lrosa2.singletrail.ui.library.Here
+import io.github.lrosa2.singletrail.ui.library.distanceTo
 import io.github.lrosa2.singletrail.util.thinTo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -54,6 +57,8 @@ class RouteDetailViewModel(
     private val collections: CollectionRepository,
     maps: Flow<List<MapFileEntity>>,
     private val id: String,
+    /** Where "near me" last found the rider (spec §8.1). */
+    here: Flow<Here?> = flowOf(null),
 ) : ViewModel() {
 
     val route: StateFlow<RouteLoad> = repository.observeRoute(id)
@@ -90,6 +95,13 @@ class RouteDetailViewModel(
     /** Metres of the route outside every installed map (spec §7.5), or null until the route is loaded. */
     val uncoveredMeters: StateFlow<Double?> = combine(geometry, maps) { g, installed ->
         (g as? GeometryLoad.Loaded)?.let { MapCoverage.uncoveredMeters(it.outline, installed.map { m -> m.area }) }
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Straight-line metres from the rider to the route's nearest point; null until "near me" has found the rider. */
+    val away: StateFlow<Double?> = combine(route, here) { load, at ->
+        (load as? RouteLoad.Loaded)?.route?.let { r -> at?.let { distanceTo(r, it) } }
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

@@ -74,6 +74,7 @@ fun RouteDetailScreen(
     val load by viewModel.route.collectAsStateWithLifecycle()
     val geometry by viewModel.geometry.collectAsStateWithLifecycle()
     val uncovered by viewModel.uncoveredMeters.collectAsStateWithLifecycle()
+    val away by viewModel.away.collectAsStateWithLifecycle()
     val rides by viewModel.rides.collectAsStateWithLifecycle()
     val inCollections by viewModel.inCollections.collectAsStateWithLifecycle()
     val allCollections by viewModel.allCollections.collectAsStateWithLifecycle()
@@ -151,7 +152,7 @@ fun RouteDetailScreen(
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 is RouteLoad.Loaded -> RouteDetails(
-                    current.route, geometry, uncovered, viewModel::setRating, rides, onOpenRide, onGetMaps,
+                    current.route, geometry, uncovered, away, viewModel::setRating, rides, onOpenRide, onGetMaps,
                     inCollections, onEditCollections = { editingCollections = true },
                 )
             }
@@ -213,6 +214,7 @@ private fun RouteDetails(
     route: RouteEntity,
     geometry: GeometryLoad,
     uncoveredMeters: Double?,
+    away: Double?,
     onRate: (Int?) -> Unit,
     rides: List<RideEntity>,
     onOpenRide: (String) -> Unit,
@@ -239,7 +241,7 @@ private fun RouteDetails(
             }
         }
 
-        Stats(route, (geometry as? GeometryLoad.Loaded)?.waypoints?.size)
+        Stats(route, (geometry as? GeometryLoad.Loaded)?.waypoints?.size, away)
 
         if (uncoveredMeters != null) Coverage(uncoveredMeters, onGetMaps)
 
@@ -299,7 +301,7 @@ private fun RouteDetails(
 }
 
 @Composable
-private fun Stats(route: RouteEntity, waypointCount: Int?) {
+private fun Stats(route: RouteEntity, waypointCount: Int?, away: Double?) {
     val rows = buildList {
         add(stringResource(R.string.detail_distance) to Formats.distance(route.distanceM))
         route.ascentM?.let { add(stringResource(R.string.detail_climb) to stringResource(R.string.climb_value, Formats.elevation(it))) }
@@ -311,6 +313,8 @@ private fun Stats(route: RouteEntity, waypointCount: Int?) {
                 stringResource(if (route.isLoop) R.string.detail_loop else R.string.detail_point_to_point),
         )
         if (waypointCount != null && waypointCount > 0) add(stringResource(R.string.detail_waypoints) to waypointCount.toString())
+        // Straight line from where "near me" found the rider, as on the library's cards (spec §8.1).
+        away?.let { add(stringResource(R.string.detail_nearest_point) to stringResource(R.string.library_away, Formats.distance(it))) }
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

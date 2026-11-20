@@ -347,6 +347,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
 - **Manage collections** (from the Collection chip and the library menu): collections with their route counts; *New collection*, *Rename*, *Delete* (asks first and says the routes stay in the library). Names are unique, ignoring case.
 - **Route detail:**
   - Map preview, stats, elevation profile (custom Canvas, no chart library), description (plain text), stars.
+  - Once "near me" has found the rider, the stats end with *Nearest point: 8.3 km away* (D52).
   - Coverage check; ride history for this route.
   - *Collections*: the route's collections, with *Edit* (the same checklist as in selection mode).
   - Actions: *Ride*, *Ride reversed*, *Share route*, *Edit name/description*, *Delete*.
@@ -357,7 +358,7 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
   - Off-route threshold, beep volume, dim level, compass on/off, map orientation.
   - Low-power threshold, watched folder, debug trace opt-in, battery helper.
   - *Delete all ride history*, *Full backup*, *Restore*.
-- **"Near me":** one location request when the library opens (permission while in use), never continuous. The distance is a straight line to the nearest point anywhere along the route, where a ride would join it (D14), measured on an outline stored with each route (D46).
+- **"Near me":** one location request when the library opens (permission while in use), never continuous. The distance is a straight line to the nearest point anywhere along the route, where a ride would join it (D14), measured on an outline stored with each route (D46). Once found, every library card shows it ("3.6 km away") whatever the sort, and so does the route page, until the app closes (D52).
 
 ### 8.2 Data model (Room)
 
@@ -713,6 +714,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D49 | Library filters | A *Filters* sheet holds minimum stars (moved from its own chip), length (≤ 20 / 20–40 / > 40 km), climb (≤ 500 / 500–1000 / > 1000 m), *Not ridden yet* and *Loops only*; the chip shows how many are on. Collection and filters are remembered across restarts like sort and stars | For choosing a ride at home; fixed bands are quicker to pick than sliders and cover rides of an afternoon to a full day | User | 2026-11-13 |
 | D50 | Riding the other way | Reverse detection counts metres ridden back along the route, at any speed and GPS heading: 100 m, or 50 m right after joining until the rider has gone 100 m forward; a GPS course along the route restarts the count; nothing counts while another pass of the route runs beside the rider; riding along the route backwards while off route prompts too. *Ride the other way* on the unlocked ride screen switches at once. Replaces "course > 135° and speed > 2 m/s" in §5.8 | Field test: arrived at a route, set off the other way, and it never switched. Every reading had to be faster than 7.2 km/h with a heading good to 30°, and one that wasn't restarted the count; matching gave up about 180 m back, and off route never looked at the other direction. A simulated 7 km/h ride stayed off route to the end. Climbing and pushing are slower than that. The pass guard keeps slow out-and-backs and loop ends from prompting; the button is the way out when detection can't tell | User | 2026-11-15 |
 | D51 | Directions to the route | While finding the route or off it, the unlocked ride screen offers *Directions*: a `geo:` link with a pin on the arrow's point (the nearest point while finding the route, the return target off route), labelled with the route's name, opened in whatever map app the rider picks. The ride keeps running meanwhile. No button on the route page | The arrow is a straight line, across fields and streams; a map app plans a way there on roads and paths. A standard link adds no Google code (F-Droid, §2) and works with Google Maps, OsmAnd or Organic Maps. Starting the ride at home gives the same point, so the route page needs nothing | User | 2026-11-15 |
+| D52 | Distance in every sort | Once "near me" has found the rider, every library card shows how far the route is ("3.6 km away", the near-me distance) whatever the sort, and the route page shows it as *Nearest point*. The position is kept until the app closes; no extra location requests | A library of downloaded routes mixes nearby ones with routes far away. The distance was only shown while sorted by near me, which doesn't survive a restart, and was gone on the route page | User | 2026-11-18 |
 
 ---
 
@@ -919,6 +921,9 @@ From the first ride outside (2026-11-15):
 - [x] Riding the other way (D50): reverse detection counts metres back along the route at any speed (100 m, or 50 m right after joining), a course along the route restarts it, nothing counts beside another pass of the route, and riding the route backwards while off route prompts too; *Ride the other way* on the unlocked ride screen switches at once in any phase (off route: back on the route at once when beside it). A loop turned round in its first 10% rides the whole lap the other way from there instead of finishing on the spot (found on the emulator). New trace action `RIDE_OTHER_WAY`. 18 new engine tests (the field case: joining mid-route and climbing back at 6.8 km/h used to go off route for good; slow, noisy, untrusted-heading, out-and-back, loop and off-route cases; the button in every phase) and 1 session test; 55 GPX, 173 nav and 261 app JVM tests green
 - [x] *Directions* to the route in another map app (D51): `Directions` picks the arrow's point while finding the route or off it and builds a `geo:` link labelled with the route's name; a message when no app can open it. 7 JVM tests. On the emulator: the Kaien-Route from 855 m away → *Directions* opened Google Maps with a pin on the route's nearest point (47.434751, 9.536921) named "Kaien-Route · Heiden loop"; back in Singletrail the ride was still running; on the route only *Ride the other way* shows, and each tap switched the banner between "↘ Sharp right · 30 m" and "↱ Turn right · 260 m" (13.7 km left both ways)
 - [ ] On the G15: both, outside
+
+From importing more komoot routes (2026-11-18):
+- [x] Distance in every sort (D52): the near-me position is shared by the library and the route page (`AppContainer.nearMe`); every card shows "km away" once it is known, and the route page's stats end with *Nearest point*. 2 JVM tests (shown in every sort, not before near me has found the rider); 55 GPX, 173 nav and 263 app JVM tests green. On the emulator, from St. Gallen: near me showed 3.6 km to 9.1 km on the cards, sorting by name kept them, the Kaien-Route page showed "Nearest point 8.3 km away" like its card, and after a restart neither showed a distance until near me ran again
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures
 - [ ] Tune thresholds (Q4); battery soak test
 - [ ] Signed release APK to friends

@@ -138,6 +138,7 @@
     <string name="detail_loop">Loop</string>
     <string name="detail_point_to_point">Point to point</string>
     <string name="detail_waypoints">Waypoints</string>
+    <string name="detail_nearest_point">Nearest point</string>
     <string name="detail_rating">Your rating</string>
     <string name="detail_rating_hint">Tap a star to rate; tap it again to clear.</string>
     <string name="detail_profile">Elevation</string>

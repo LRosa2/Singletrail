@@ -147,7 +147,7 @@ fun SingletrailNavHost(container: AppContainer) {
                 entryProvider = entryProvider {
                     entry<LibraryKey> {
                         val libraryModel = viewModel {
-                            LibraryViewModel(container.routes, container.rides, container.collections, container.settings, BuildConfig.VERSION_NAME)
+                            LibraryViewModel(container.routes, container.rides, container.collections, container.settings, BuildConfig.VERSION_NAME, container.nearMe)
                         }
                         val nearMe = rememberNearMe(libraryModel::locating, libraryModel::located)
                         LibraryScreen(
@@ -171,7 +171,7 @@ fun SingletrailNavHost(container: AppContainer) {
                     }
                     entry<RouteKey> { key ->
                         RouteDetailScreen(
-                            viewModel = viewModel { RouteDetailViewModel(container.routes, container.rides, container.collections, container.maps.maps, key.id) },
+                            viewModel = viewModel { RouteDetailViewModel(container.routes, container.rides, container.collections, container.maps.maps, key.id, container.nearMe) },
                             onBack = back,
                             onRide = { route, reversed, simulate ->
                                 if (riding) openRide() else startRide(RideRequest(route.id, route.name, reversed, simulate))

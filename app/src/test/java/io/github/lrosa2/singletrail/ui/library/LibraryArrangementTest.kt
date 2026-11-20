@@ -6,6 +6,7 @@ import io.github.lrosa2.singletrail.line
 import io.github.lrosa2.singletrail.newRoute
 import io.github.lrosa2.singletrail.track
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 class LibraryArrangementTest {
@@ -117,6 +118,20 @@ class LibraryArrangementTest {
     @Test
     fun `distance to a route is to its nearest point`() {
         assertEquals(1_000.0, distanceTo(through("Passing", -10 to 1, 10 to 1), here), 5.0)
+    }
+
+    @Test
+    fun `once near me has found the rider, every sort shows how far each route is`() {
+        val passing = through("Passing", -10 to 1, 10 to 1)
+        LibrarySort.entries.forEach { sort ->
+            val away = LibraryState(sort = sort, here = here).away(passing)
+            assertEquals(1_000.0, away ?: Double.NaN, 5.0, "sorted by $sort")
+        }
+    }
+
+    @Test
+    fun `no distance is shown before near me has found the rider`() {
+        assertNull(LibraryState(sort = LibrarySort.NEAR_ME).away(through("Passing", -10 to 1, 10 to 1)))
     }
 
     @Test

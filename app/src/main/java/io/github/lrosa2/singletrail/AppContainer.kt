@@ -26,9 +26,11 @@ import io.github.lrosa2.singletrail.importing.ImportCoordinator
 import io.github.lrosa2.singletrail.maps.MapInstaller
 import java.io.File
 import io.github.lrosa2.singletrail.ride.RideController
+import io.github.lrosa2.singletrail.ui.library.Here
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /** Manual dependency injection (spec §13.1): one instance of each app-wide service. */
@@ -44,6 +46,12 @@ class AppContainer(context: Context) {
     val collections = CollectionRepository(database)
     val rides = RideRepository(database, context.filesDir)
     val settings = SettingsStore(context)
+
+    /**
+     * Where "near me" last found the rider, kept until the app closes. The library's cards and the route
+     * page show how far each route is from here (spec §8.1).
+     */
+    val nearMe = MutableStateFlow<Here?>(null)
     val importer = ImportCoordinator(
         RoutingGpxSource(
             content = ContentGpxSource(context.contentResolver, gpxReader, File(context.cacheDir, "import")),

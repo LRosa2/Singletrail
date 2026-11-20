@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -26,7 +28,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -36,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -84,6 +88,8 @@ fun RouteDetailScreen(
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var confirmingDelete by rememberSaveable { mutableStateOf(false) }
+    // "Other way" turns the route round before riding; it starts as recorded each time the page opens (D53).
+    var otherWay by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -116,7 +122,7 @@ fun RouteDetailScreen(
                                 if (showSimulate) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.action_simulate)) }, onClick = {
                                         menuOpen = false
-                                        onRide(route, false, true)
+                                        onRide(route, otherWay, true)
                                     })
                                 }
                             }
@@ -128,16 +134,12 @@ fun RouteDetailScreen(
         bottomBar = {
             if (route != null) {
                 Surface(tonalElevation = 3.dp) {
-                    Row(
-                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    // One button, the way the arrows on the map point (D53).
+                    Button(
+                        onClick = { onRide(route, otherWay, false) },
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp).height(52.dp),
                     ) {
-                        Button(onClick = { onRide(route, false, false) }, Modifier.weight(1f).height(52.dp)) {
-                            Text(stringResource(R.string.action_ride))
-                        }
-                        OutlinedButton(onClick = { onRide(route, true, false) }, Modifier.weight(1f).height(52.dp)) {
-                            Text(stringResource(R.string.action_ride_reversed))
-                        }
+                        Text(stringResource(if (otherWay) R.string.action_ride_other_way else R.string.action_ride))
                     }
                 }
             }
@@ -152,8 +154,8 @@ fun RouteDetailScreen(
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 is RouteLoad.Loaded -> RouteDetails(
-                    current.route, geometry, uncovered, away, viewModel::setRating, rides, onOpenRide, onGetMaps,
-                    inCollections, onEditCollections = { editingCollections = true },
+                    current.route, geometry, otherWay, onOtherWay = { otherWay = it }, uncovered, away, viewModel::setRating,
+                    rides, onOpenRide, onGetMaps, inCollections, onEditCollections = { editingCollections = true },
                 )
             }
         }
@@ -213,6 +215,8 @@ fun RouteDetailScreen(
 private fun RouteDetails(
     route: RouteEntity,
     geometry: GeometryLoad,
+    otherWay: Boolean,
+    onOtherWay: (Boolean) -> Unit,
     uncoveredMeters: Double?,
     away: Double?,
     onRate: (Int?) -> Unit,
@@ -222,6 +226,10 @@ private fun RouteDetails(
     inCollections: List<CollectionEntity>,
     onEditCollections: () -> Unit,
 ) {
+    // The map, the profile and the climb figures show the route the way it will be ridden (D53).
+    val shown = remember(geometry, otherWay) {
+        (geometry as? GeometryLoad.Loaded)?.let { if (otherWay) it.turnedRound() else it }
+    }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -229,19 +237,43 @@ private fun RouteDetails(
         val outlineDescription = stringResource(R.string.detail_outline)
         Card(Modifier.fillMaxWidth()) {
             Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-                when (geometry) {
-                    GeometryLoad.Loading -> CircularProgressIndicator()
-                    GeometryLoad.Failed -> Text(stringResource(R.string.detail_geometry_failed), Modifier.padding(16.dp))
-                    is GeometryLoad.Loaded -> RouteOutline(
-                        geometry.outline,
+                when {
+                    shown != null -> RouteOutline(
+                        shown.outline,
                         Modifier.fillMaxSize().semantics { contentDescription = outlineDescription },
-                        waypoints = geometry.waypoints.map { it.lat to it.lon },
+                        waypoints = shown.waypoints.map { it.lat to it.lon },
+                        arrows = true,
+                    )
+                    geometry == GeometryLoad.Failed -> Text(stringResource(R.string.detail_geometry_failed), Modifier.padding(16.dp))
+                    else -> CircularProgressIndicator()
+                }
+            }
+            if (shown != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.detail_direction_hint),
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FilterChip(
+                        selected = otherWay,
+                        onClick = { onOtherWay(!otherWay) },
+                        label = { Text(stringResource(R.string.action_other_way)) },
+                        leadingIcon = if (otherWay) {
+                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(FilterChipDefaults.IconSize)) }
+                        } else {
+                            null
+                        },
                     )
                 }
             }
         }
 
-        Stats(route, (geometry as? GeometryLoad.Loaded)?.waypoints?.size, away)
+        Stats(route, shown?.waypoints?.size, away, otherWay)
 
         if (uncoveredMeters != null) Coverage(uncoveredMeters, onGetMaps)
 
@@ -255,10 +287,10 @@ private fun RouteDetails(
         }
 
         Section(stringResource(R.string.detail_profile)) {
-            val profile = (geometry as? GeometryLoad.Loaded)?.profile
+            val profile = shown?.profile
             when {
                 profile != null -> ElevationChart(profile, route.distanceM, Modifier.fillMaxWidth())
-                geometry is GeometryLoad.Loaded -> Text(stringResource(R.string.detail_no_elevation))
+                shown != null -> Text(stringResource(R.string.detail_no_elevation))
             }
         }
 
@@ -301,11 +333,12 @@ private fun RouteDetails(
 }
 
 @Composable
-private fun Stats(route: RouteEntity, waypointCount: Int?, away: Double?) {
+private fun Stats(route: RouteEntity, waypointCount: Int?, away: Double?, otherWay: Boolean) {
+    val (climb, descent) = route.climbAndDescent(otherWay)
     val rows = buildList {
         add(stringResource(R.string.detail_distance) to Formats.distance(route.distanceM))
-        route.ascentM?.let { add(stringResource(R.string.detail_climb) to stringResource(R.string.climb_value, Formats.elevation(it))) }
-        route.descentM?.let { add(stringResource(R.string.detail_descent) to stringResource(R.string.descent_value, Formats.elevation(it))) }
+        climb?.let { add(stringResource(R.string.detail_climb) to stringResource(R.string.climb_value, Formats.elevation(it))) }
+        descent?.let { add(stringResource(R.string.detail_descent) to stringResource(R.string.descent_value, Formats.elevation(it))) }
         route.maxEleM?.let { add(stringResource(R.string.detail_highest) to Formats.elevation(it)) }
         route.minEleM?.let { add(stringResource(R.string.detail_lowest) to Formats.elevation(it)) }
         add(

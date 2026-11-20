@@ -64,7 +64,7 @@ Following a GPX route on a mountain bike today means either a heavyweight app (O
 1. **Receive a route.** A friend sends a `.gpx` on WhatsApp. Tap it → "Open with Singletrail" → import preview (name, distance, climb, map thumbnail) → *Add to library*.
    - If the route already exists: "Already in library".
    - If it looks like an updated version: "Update existing route / keep both".
-2. **Choose today's ride.** Library sorted by *near me*, narrowed to a collection and filtered by stars, length, climb, not ridden yet or loops. Open a route to see the map, elevation profile, stats, description, your stars, past rides and the map coverage check → *Ride* / *Ride reversed*.
+2. **Choose today's ride.** Library sorted by *near me*, narrowed to a collection and filtered by stars, length, climb, not ridden yet or loops. Open a route to see the map, elevation profile, stats, description, your stars, past rides and the map coverage check. Arrows on the map show the way the route goes; *Other way* turns it round → *Ride*.
 3. **Install a map.** Maps screen → *Get maps* opens openandromaps.org in the browser → tap the region's install link → Singletrail confirms region, size and free space → download → unpack → ready. A `.map` file from a PC can also be imported manually.
 4. **Ride.**
    - Tap *Ride* → audio check (test beep).
@@ -224,7 +224,7 @@ ON_ROUTE ─within 30 m of finish after ≥90% progress─▶ FINISHED
   - The first match sets `s_start`.
   - On loops, progress wraps and the ride finishes when the rider returns to `s_start`.
   - On point-to-point routes, the part before `s_start` is skipped.
-- **Ride reversed:** reversed geometry with the reverse maneuver list. Chosen at start, by auto-detection, or with *Ride the other way* on the ride screen.
+- **Ride reversed:** reversed geometry with the reverse maneuver list. Chosen at start with *Other way* on the route page (D53), by auto-detection, or with *Ride the other way* on the ride screen.
 - **Auto-detect reverse** (D50):
   - Counts the metres ridden back along the route (`s` decreasing), at any speed and whatever the GPS heading. Triggers at ≥ 100 m, or ≥ 50 m right after joining, until the rider has gone 100 m forward from the join point.
   - A trusted GPS course along the route (within 90°) restarts the count. Standing still never moves its start, so GPS jitter can't add up.
@@ -350,7 +350,8 @@ Route detail shows "Map coverage: 100%", or "1.8 km of this route has no install
   - Once "near me" has found the rider, the stats end with *Nearest point: 8.3 km away* (D52).
   - Coverage check; ride history for this route.
   - *Collections*: the route's collections, with *Edit* (the same checklist as in selection mode).
-  - Actions: *Ride*, *Ride reversed*, *Share route*, *Edit name/description*, *Delete*.
+  - Arrows along the map's line show the way the route will be ridden. *Other way* under the map turns the route round: the arrows, the start and finish markers, the elevation profile and the climb and descent figures follow, and *Ride* becomes *Ride the other way*. It starts as recorded each time the page opens (D53).
+  - Actions: *Ride*, *Share route*, *Edit name/description*, *Delete*.
 - **Ride history:** all rides. **Ride detail:** track on the map, stats, *Export GPX*, *Delete*.
 - **Maps** (see §7).
 - **About** (library menu): version and build number, author, licence (GPL-3.0), link to the source and releases, credits (OpenStreetMap, OpenAndroMaps theme, VTM).
@@ -715,6 +716,7 @@ RideService (FGS, location) ─ owns ─▶ LocationSource (GPS) ─┐
 | D50 | Riding the other way | Reverse detection counts metres ridden back along the route, at any speed and GPS heading: 100 m, or 50 m right after joining until the rider has gone 100 m forward; a GPS course along the route restarts the count; nothing counts while another pass of the route runs beside the rider; riding along the route backwards while off route prompts too. *Ride the other way* on the unlocked ride screen switches at once. Replaces "course > 135° and speed > 2 m/s" in §5.8 | Field test: arrived at a route, set off the other way, and it never switched. Every reading had to be faster than 7.2 km/h with a heading good to 30°, and one that wasn't restarted the count; matching gave up about 180 m back, and off route never looked at the other direction. A simulated 7 km/h ride stayed off route to the end. Climbing and pushing are slower than that. The pass guard keeps slow out-and-backs and loop ends from prompting; the button is the way out when detection can't tell | User | 2026-11-15 |
 | D51 | Directions to the route | While finding the route or off it, the unlocked ride screen offers *Directions*: a `geo:` link with a pin on the arrow's point (the nearest point while finding the route, the return target off route), labelled with the route's name, opened in whatever map app the rider picks. The ride keeps running meanwhile. No button on the route page | The arrow is a straight line, across fields and streams; a map app plans a way there on roads and paths. A standard link adds no Google code (F-Droid, §2) and works with Google Maps, OsmAnd or Organic Maps. Starting the ride at home gives the same point, so the route page needs nothing | User | 2026-11-15 |
 | D52 | Distance in every sort | Once "near me" has found the rider, every library card shows how far the route is ("3.6 km away", the near-me distance) whatever the sort, and the route page shows it as *Nearest point*. The position is kept until the app closes; no extra location requests | A library of downloaded routes mixes nearby ones with routes far away. The distance was only shown while sorted by near me, which doesn't survive a restart, and was gone on the route page | User | 2026-11-18 |
+| D53 | Riding direction on the route page | One *Ride* button. Arrows along the route page's map show the direction; an *Other way* switch turns the map, the elevation profile and the climb and descent round, and the button then reads *Ride the other way*. Not remembered | *Ride* and *Ride reversed* side by side didn't say which way either went: the map had only a start dot and a finish ring, which sit on top of each other on a loop. A single button with auto-detection alone would cost 50–100 m of wrong directions and a prompt each time, and wouldn't show the climbs the way they'll be ridden | User | 2026-11-20 |
 
 ---
 
@@ -924,6 +926,9 @@ From the first ride outside (2026-11-15):
 
 From importing more komoot routes (2026-11-18):
 - [x] Distance in every sort (D52): the near-me position is shared by the library and the route page (`AppContainer.nearMe`); every card shows "km away" once it is known, and the route page's stats end with *Nearest point*. 2 JVM tests (shown in every sort, not before near me has found the rider); 55 GPX, 173 nav and 263 app JVM tests green. On the emulator, from St. Gallen: near me showed 3.6 km to 9.1 km on the cards, sorting by name kept them, the Kaien-Route page showed "Nearest point 8.3 km away" like its card, and after a restart neither showed a distance until near me ran again
+
+From the first rides with 0.1.5 (2026-11-20):
+- [x] Riding direction on the route page (D53): arrowheads along the map's line every 60 dp (`directionArrows`), an *Other way* chip under the map that turns the outline, the profile and climb/descent round (`turnedRound`, `climbAndDescent`), one *Ride* button that reads *Ride the other way* when turned. Each arrowhead follows the line within 5 dp of it, so it lies along its own leg next to a hairpin. 7 JVM tests (arrow spacing, arrow direction, beside a hairpin, a short line, no line; the turned outline and profile, swapped climb and descent); 55 GPX, 173 nav and 270 app JVM tests green. On the emulator the Kaien-Route showed arrows clockwise from the start, *Other way* turned every arrow round and the button to *Ride the other way*, and reopening the page brought back *Ride*. Not tried: starting a ride from the turned page
 - [ ] Ride the four reference routes with traces on; turn traces into regression fixtures
 - [ ] Tune thresholds (Q4); battery soak test
 - [ ] Signed release APK to friends

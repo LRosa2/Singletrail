@@ -139,6 +139,7 @@
     <string name="detail_point_to_point">Point to point</string>
     <string name="detail_waypoints">Waypoints</string>
     <string name="detail_nearest_point">Nearest point</string>
+    <string name="detail_direction_hint">Arrows show the way you\'ll ride</string>
     <string name="detail_rating">Your rating</string>
     <string name="detail_rating_hint">Tap a star to rate; tap it again to clear.</string>
     <string name="detail_profile">Elevation</string>
@@ -238,7 +239,7 @@
 
     <!-- Ride -->
     <string name="action_ride">Ride</string>
-    <string name="action_ride_reversed">Ride reversed</string>
+    <string name="action_other_way">Other way</string>
     <string name="action_simulate">Simulate ride (debug)</string>
     <string name="action_stop_ride">Stop ride</string>
     <string name="action_accept">Switch now</string>
